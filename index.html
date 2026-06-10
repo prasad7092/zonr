@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZONR — Kolhapur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDQOfcnkcxV9dLxt8uFddkov2aNNVMVbUs",
+  authDomain: "turfwar-3b38a.firebaseapp.com",
+  projectId: "turfwar-3b38a",
+  storageBucket: "turfwar-3b38a.firebasestorage.app",
+  messagingSenderId: "179531351302",
+  appId: "1:179531351302:web:f7840c8cdd50cb86efca87"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+window._auth = auth; window._db = db;
+window.fbSignup = async (name, email, pass) => {
+  const cred = await createUserWithEmailAndPassword(auth, email, pass);
+  await updateProfile(cred.user, { displayName: name });
+  await setDoc(doc(db, "users", cred.user.uid), { name, email, km: 0, zones: 0, createdAt: Date.now() });
+  return cred.user;
+};
+window.fbLogin = async (email, pass) => { const cred = await signInWithEmailAndPassword(auth, email, pass); return cred.user; };
+window.fbLogout = () => signOut(auth);
+window.fbSaveRun = async (uid, km, zones) => {
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) { const d = snap.data(); await updateDoc(ref, { km: (d.km||0)+km, zones: Math.max(d.zones||0, zones) }); }
+};
+onAuthStateChanged(auth, user => {
+  window._currentUser = user;
+  if (user) {
+    document.getElementById('authModal').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('userNameDisplay').textContent = user.displayName || user.email;
+    initApp();
+  } else {
+    document.getElementById('authModal').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+</script>
+<style>
+:root {
+  --bg:#0d0d12; --panel:#14141c; --panel2:#1a1a24; --border:#22222f;
+  --accent:#ff4d00; --accent2:#00c8ff; --green:#00e87a; --text:#eeeef5; --muted:#5a5a78; --radius:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;height:100vh;overflow:hidden;}
+
+/* AUTH */
+#authModal{position:fixed;inset:0;background:rgba(10,10,15,0.97);display:flex;align-items:center;justify-content:center;z-index:9999;}
+.auth-box{background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:36px 32px;width:360px;box-shadow:0 0 60px rgba(255,77,0,0.1);}
+.auth-logo{font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:4px;color:var(--accent);text-shadow:0 0 30px rgba(255,77,0,0.5);text-align:center;}
+.auth-logo span{color:var(--text);}
+.auth-sub{text-align:center;color:var(--muted);font-size:12px;letter-spacing:2px;margin-bottom:28px;}
+.auth-tabs{display:flex;margin-bottom:24px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:all 0.2s;}
+.auth-tab.active{background:var(--accent);color:white;}
+.auth-field{margin-bottom:14px;}
+.auth-field label{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;}
+.auth-field input{width:100%;padding:12px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border 0.2s;}
+.auth-field input:focus{border-color:var(--accent);}
+.auth-btn{width:100%;padding:14px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;cursor:pointer;margin-top:6px;transition:all 0.2s;box-shadow:0 0 24px rgba(255,77,0,0.35);}
+.auth-btn:hover{background:#ff6120;transform:translateY(-1px);}
+.auth-err{color:#ff6060;font-size:12px;margin-top:8px;text-align:center;min-height:18px;}
+
+/* APP */
+#app{display:none;flex-direction:column;height:100vh;}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border);z-index:1000;flex-shrink:0;}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--accent);}
+.logo span{color:var(--text);}
+.hright{display:flex;gap:12px;align-items:center;}
+.stat{text-align:center;}
+.stat-val{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--accent);line-height:1;}
+.stat-label{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+#timer{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);letter-spacing:2px;}
+.user-chip{display:flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:5px 12px 5px 5px;cursor:pointer;font-size:12px;font-weight:600;}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:14px;color:white;}
+
+/* MENU BUTTON (3 dots) */
+.menu-btn{
+  width:36px;height:36px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  cursor:pointer;flex-shrink:0;transition:all 0.2s;
+}
+.menu-btn:hover{border-color:var(--accent);}
+.menu-dot{width:4px;height:4px;border-radius:50%;background:var(--text);}
+
+/* SIDE DRAWER */
+.drawer-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;
+  opacity:0;pointer-events:none;transition:opacity 0.3s;
+}
+.drawer-overlay.open{opacity:1;pointer-events:all;}
+.drawer{
+  position:fixed;left:0;top:0;bottom:0;width:260px;
+  background:var(--panel);border-right:1px solid var(--border);
+  z-index:2001;transform:translateX(-100%);transition:transform 0.32s cubic-bezier(0.4,0,0.2,1);
+  display:flex;flex-direction:column;padding:0;
+}
+.drawer.open{transform:translateX(0);}
+.drawer-header{
+  padding:20px 20px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.drawer-logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:var(--accent);}
+.drawer-logo span{color:var(--text);}
+.drawer-close{
+  width:30px;height:30px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--muted);
+}
+.drawer-close:hover{border-color:var(--accent);color:var(--text);}
+.drawer-nav{flex:1;padding:10px 0;overflow-y:auto;}
+.drawer-item{
+  display:flex;align-items:center;gap:14px;padding:14px 20px;cursor:pointer;
+  transition:all 0.18s;border-left:3px solid transparent;
+}
+.drawer-item:hover{background:rgba(255,77,0,0.06);border-left-color:rgba(255,77,0,0.3);}
+.drawer-item.active{background:rgba(255,77,0,0.1);border-left-color:var(--accent);}
+.drawer-icon{font-size:18px;width:24px;text-align:center;}
+.drawer-label{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;}
+.drawer-divider{height:1px;background:var(--border);margin:8px 20px;}
+.drawer-footer{padding:16px 20px;border-top:1px solid var(--border);}
+.drawer-user{display:flex;align-items:center;gap:10px;}
+.drawer-avatar{width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:18px;color:white;}
+.drawer-username{font-size:13px;font-weight:700;}
+.drawer-logout{font-size:11px;color:var(--muted);cursor:pointer;margin-top:2px;}
+.drawer-logout:hover{color:var(--accent);}
+
+/* PAGES */
+.page{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.page.active{display:flex;}
+#map{flex:1;width:100%;z-index:1;}
+.map-overlay{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;display:flex;gap:10px;align-items:center;}
+.btn-run{padding:13px 32px;border-radius:50px;border:none;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;background:var(--accent);color:white;box-shadow:0 0 28px rgba(255,77,0,0.5);transition:all 0.2s;}
+.btn-run.running{background:#cc3300;animation:pulse 1.5s infinite;}
+.btn-ghost{padding:11px 16px;border-radius:50px;border:1px solid var(--border);background:rgba(20,20,28,0.92);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap;}
+.btn-ghost:hover{border-color:var(--accent2);color:var(--accent2);}
+@keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(255,77,0,0.4);}50%{box-shadow:0 0 40px rgba(255,77,0,0.9);}}
+
+/* TRACKS */
+.scroll-page{padding:14px;overflow-y:auto;flex:1;}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;}
+.track-grid{display:flex;flex-direction:column;gap:10px;}
+.track-card{background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all 0.22s;display:flex;align-items:flex-start;gap:14px;}
+.track-card:hover{border-color:var(--accent);transform:translateX(3px);}
+.track-card.selected{border-color:var(--accent);background:rgba(255,77,0,0.08);}
+.track-dist{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent);line-height:1;min-width:52px;text-align:center;}
+.track-dist span{font-size:13px;color:var(--muted);}
+.track-info{flex:1;}
+.track-name{font-size:14px;font-weight:700;margin-bottom:1px;}
+.track-area{font-size:10px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
+.track-desc{font-size:11px;color:var(--muted);}
+.track-tags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.tag{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;background:var(--panel);border:1px solid var(--border);color:var(--muted);}
+.tag.easy{border-color:#00e87a44;color:var(--green);}
+.tag.medium{border-color:#ffaa0044;color:#ffaa00;}
+.tag.hard{border-color:#ff4d0044;color:var(--accent);}
+.btn-start-track{width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;cursor:pointer;margin-top:14px;box-shadow:0 0 20px rgba(255,77,0,0.3);transition:all 0.2s;}
+.btn-start-track:hover{background:#ff6120;}
+
+/* LEADERBOARD */
+.player-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);margin-bottom:8px;}
+.player-card.you{border-color:rgba(255,77,0,0.4);background:rgba(255,77,0,0.06);}
+.rank{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--muted);width:28px;text-align:center;}
+.rank.gold{color:#ffd700;}.rank.silver{color:#c0c0c0;}.rank.bronze{color:#cd7f32;}
+.pdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.pname{font-size:14px;font-weight:700;}
+.pzones{font-size:11px;color:var(--muted);margin-top:2px;}
+.pkm{font-family:'Bebas Neue',sans-serif;font-size:22px;}
+.pkm span{font-size:11px;color:var(--muted);}
+
+/* ZONES */
+.zone-card{padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);cursor:pointer;transition:all 0.2s;margin-bottom:6px;}
+.zone-card:hover{border-color:rgba(255,77,0,0.4);transform:translateX(3px);}
+.zone-name{font-size:13px;font-weight:700;margin-bottom:2px;}
+.zone-area{font-size:10px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
+.zone-owner{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+.zodot{width:8px;height:8px;border-radius:50%;}
+.zone-bar-wrap{margin-top:8px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.zone-bar{height:100%;border-radius:2px;transition:width 0.4s;}
+.zone-km-row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;}
+.zone-km-item{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;}
+
+/* TOAST */
+.toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--panel);border:1px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9990;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);white-space:nowrap;box-shadow:0 0 30px rgba(255,77,0,0.2);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.leaflet-container{background:#0d0d12;}
+
+/* RUN SUMMARY POPUP */
+.summary-overlay{position:fixed;inset:0;background:rgba(5,5,10,0.92);z-index:8000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.35s;}
+.summary-overlay.show{opacity:1;pointer-events:all;}
+.summary-box{background:var(--panel);border:1px solid var(--border);border-radius:24px;padding:32px 28px;width:340px;max-width:92vw;box-shadow:0 0 80px rgba(255,77,0,0.15);transform:translateY(40px) scale(0.95);transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+.summary-overlay.show .summary-box{transform:translateY(0) scale(1);}
+.summary-header{text-align:center;margin-bottom:24px;}
+.summary-emoji{font-size:48px;line-height:1;margin-bottom:8px;}
+.summary-title{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:var(--accent);}
+.summary-subtitle{font-size:12px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+.summary-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.summary-stat{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;}
+.summary-stat.full{grid-column:1/-1;}
+.summary-stat-val{font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--accent);line-height:1;}
+.summary-stat-val.blue{color:var(--accent2);}
+.summary-stat-val.green{color:var(--green);}
+.summary-stat-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:4px;}
+.summary-zones-title{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+.summary-zone-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,77,0,0.1);border:1px solid rgba(255,77,0,0.3);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;margin:3px;color:var(--text);}
+.summary-zones-wrap{margin-bottom:20px;}
+.summary-btn{width:100%;padding:14px;border-radius:12px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;cursor:pointer;box-shadow:0 0 24px rgba(255,77,0,0.35);transition:all 0.2s;}
+.summary-btn:hover{background:#ff6120;transform:translateY(-1px);}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="authModal">
+  <div class="auth-box">
+    <div class="auth-logo">ZON<span>R</span></div>
+    <div class="auth-sub">📍 KOLHAPUR · CLAIM YOUR CITY</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">LOGIN</div>
+      <div class="auth-tab" id="tabSignup" onclick="showAuthTab('signup')">SIGN UP</div>
+    </div>
+    <div id="loginForm">
+      <div class="auth-field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@email.com"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••"></div>
+      <button class="auth-btn" onclick="doLogin()">LOGIN</button>
+    </div>
+    <div id="signupForm" style="display:none">
+      <div class="auth-field"><label>Your Name</label><input type="text" id="signupName" placeholder="Prasad"></div>
+      <div class="auth-field"><label>Email</label><input type="email" id="signupEmail" placeholder="you@email.com"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="signupPass" placeholder="Min 6 characters"></div>
+      <button class="auth-btn" onclick="doSignup()">CREATE ACCOUNT</button>
+    </div>
+    <div class="auth-err" id="authErr"></div>
+  </div>
+</div>
+
+<!-- SIDE DRAWER -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="drawer-logo">ZON<span>R</span></div>
+    <div class="drawer-close" onclick="closeDrawer()">✕</div>
+  </div>
+  <div class="drawer-nav">
+    <div class="drawer-item active" id="ditem-map" onclick="switchTab('map');closeDrawer()">
+      <div class="drawer-icon">🗺</div>
+      <div class="drawer-label">MAP</div>
+    </div>
+    <div class="drawer-item" id="ditem-tracks" onclick="switchTab('tracks');closeDrawer()">
+      <div class="drawer-icon">🏃</div>
+      <div class="drawer-label">TRACKS</div>
+    </div>
+    <div class="drawer-item" id="ditem-leaderboard" onclick="switchTab('leaderboard');closeDrawer()">
+      <div class="drawer-icon">🏆</div>
+      <div class="drawer-label">LEADERBOARD</div>
+    </div>
+    <div class="drawer-item" id="ditem-zones" onclick="switchTab('zones');closeDrawer()">
+      <div class="drawer-icon">📍</div>
+      <div class="drawer-label">ZONES</div>
+    </div>
+    <div class="drawer-divider"></div>
+    <div class="drawer-item" onclick="simulateFriends();closeDrawer()">
+      <div class="drawer-icon">⚡</div>
+      <div class="drawer-label">SIMULATE</div>
+    </div>
+  </div>
+  <div class="drawer-footer">
+    <div class="drawer-user">
+      <div class="drawer-avatar" id="drawerAvatar">P</div>
+      <div>
+        <div class="drawer-username" id="drawerName">Runner</div>
+        <div class="drawer-logout" onclick="doLogout()">Log out →</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="menu-btn" onclick="openDrawer()">
+        <div class="menu-dot"></div>
+        <div class="menu-dot"></div>
+        <div class="menu-dot"></div>
+      </div>
+      <div>
+        <div class="logo">ZON<span>R</span></div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:2px;">📍 KOLHAPUR</div>
+      </div>
+    </div>
+    <div class="hright">
+      <div class="stat"><div class="stat-val" id="distVal">0.00</div><div class="stat-label">km</div></div>
+      <div class="stat"><div class="stat-val" id="zonesWon">0</div><div class="stat-label">zones</div></div>
+      <div id="timer">00:00</div>
+      <div class="user-chip" onclick="openDrawer()">
+        <div class="user-avatar" id="userAvatar">P</div>
+        <span id="userNameDisplay">User</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAP -->
+  <div class="page active" id="page-map" style="position:relative;">
+    <div id="map"></div>
+    <div class="map-overlay">
+      <button class="btn-ghost" onclick="toggleRun()" style="display:none" id="simBtn">⚡ Simulate</button>
+      <button class="btn-run" id="runBtn" onclick="toggleRun()">START RUN</button>
+    </div>
+  </div>
+
+  <!-- TRACKS -->
+  <div class="page scroll-page" id="page-tracks">
+    <div class="section-title">PRESET KOLHAPUR ROUTES</div>
+    <div class="track-grid" id="trackGrid"></div>
+    <button class="btn-start-track" onclick="startSelectedTrack()">START SELECTED TRACK →</button>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="page scroll-page" id="page-leaderboard">
+    <div class="section-title">RUNNERS — KOLHAPUR</div>
+    <div id="lbList"></div>
+  </div>
+
+  <!-- ZONES -->
+  <div class="page scroll-page" id="page-zones">
+    <div class="section-title">ALL ZONES</div>
+    <div id="zonesList"></div>
+  </div>
+</div>
+
+<!-- RUN SUMMARY POPUP -->
+<div class="summary-overlay" id="summaryOverlay">
+  <div class="summary-box">
+    <div class="summary-header">
+      <div class="summary-emoji" id="sumEmoji">🏅</div>
+      <div class="summary-title">RUN COMPLETE!</div>
+      <div class="summary-subtitle" id="sumTrackName">KOLHAPUR · ZONR</div>
+    </div>
+    <div class="summary-stats">
+      <div class="summary-stat">
+        <div class="summary-stat-val" id="sumDist">0.00</div>
+        <div class="summary-stat-label">Kilometres</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-stat-val blue" id="sumTime">00:00</div>
+        <div class="summary-stat-label">Duration</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-stat-val green" id="sumPace">0:00</div>
+        <div class="summary-stat-label">Avg Pace (min/km)</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-stat-val" id="sumZones">0</div>
+        <div class="summary-stat-label">Zones Entered</div>
+      </div>
+      <div class="summary-stat full">
+        <div class="summary-stat-val" id="sumClaimed" style="font-size:22px;">—</div>
+        <div class="summary-stat-label">Zones Captured This Run</div>
+      </div>
+    </div>
+    <div class="summary-zones-wrap" id="sumZonesWrap"></div>
+    <button class="summary-btn" onclick="closeSummary()">BACK TO MAP →</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// AUTH UI
+function showAuthTab(tab) {
+  document.getElementById('tabLogin').classList.toggle('active',tab==='login');
+  document.getElementById('tabSignup').classList.toggle('active',tab==='signup');
+  document.getElementById('loginForm').style.display=tab==='login'?'block':'none';
+  document.getElementById('signupForm').style.display=tab==='signup'?'block':'none';
+  document.getElementById('authErr').textContent='';
+}
+async function doLogin() {
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  try { await window.fbLogin(email,pass); }
+  catch(e) { document.getElementById('authErr').textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim(); }
+}
+async function doSignup() {
+  const name=document.getElementById('signupName').value.trim();
+  const email=document.getElementById('signupEmail').value.trim();
+  const pass=document.getElementById('signupPass').value;
+  if(!name){document.getElementById('authErr').textContent='Please enter your name';return;}
+  try { await window.fbSignup(name,email,pass); }
+  catch(e) { document.getElementById('authErr').textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim(); }
+}
+function doLogout() { if(confirm('Log out of ZONR?')) window.fbLogout(); }
+
+// DRAWER
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+}
+
+// PLAYERS
+const PLAYERS = {
+  you:   {name:'You',    color:'#ff4d00', km:0,   zones:0},
+  rahul: {name:'Rahul',  color:'#00c8ff', km:4.2, zones:2},
+  sneha: {name:'Sneha',  color:'#b8ff00', km:3.1, zones:1},
+  amit:  {name:'Amit',   color:'#ff00aa', km:2.8, zones:1},
+};
+
+// ZONES with area labels
+const ZONES_DEF = [
+  {id:'rankala',   name:'Rankala Lake Trail',    area:'Rankala, West Kolhapur',      coords:[[16.7020,74.2270],[16.7060,74.2330],[16.7000,74.2370],[16.6960,74.2310],[16.6980,74.2260]], km:{you:0,rahul:2.1,sneha:0.4,amit:0.2}},
+  {id:'shivaji',   name:'Shivaji University',    area:'Vidyanagar, South Kolhapur',  coords:[[16.6980,74.2500],[16.7020,74.2560],[16.6970,74.2610],[16.6930,74.2550]], km:{you:0,rahul:0.5,sneha:2.2,amit:0.1}},
+  {id:'mahalaxmi', name:'Mahalaxmi Temple Area', area:'Bhawani Mandap, Central',     coords:[[16.7060,74.2410],[16.7090,74.2460],[16.7050,74.2490],[16.7020,74.2440]], km:{you:0,rahul:1.1,sneha:0,amit:1.8}},
+  {id:'tarabai',   name:'Tarabai Park',          area:'Tarabai Park, North',         coords:[[16.7110,74.2350],[16.7150,74.2410],[16.7110,74.2450],[16.7070,74.2390]], km:{you:0,rahul:0.3,sneha:0.5,amit:0.7}},
+  {id:'rpf',       name:'RPF Ground',            area:'Railway Colony, East',        coords:[[16.6920,74.2380],[16.6960,74.2440],[16.6920,74.2480],[16.6880,74.2420]], km:{you:0,rahul:0.2,sneha:0,amit:0}},
+  {id:'cbs',       name:'CBS Chowk',             area:'Central Bus Stand, Central',  coords:[[16.7000,74.2430],[16.7030,74.2470],[16.6990,74.2510],[16.6960,74.2470]], km:{you:0,rahul:0,sneha:0,amit:0}},
+  {id:'ncl',       name:'New College Area',      area:'Rajaram Road, Central',       coords:[[16.7040,74.2330],[16.7070,74.2360],[16.7050,74.2400],[16.7020,74.2370]], km:{you:0,rahul:0.4,sneha:0.8,amit:0.1}},
+  {id:'gandhinagar',name:'Gandhinagar Loop',     area:'Gandhinagar, East Kolhapur',  coords:[[16.6880,74.2480],[16.6910,74.2530],[16.6880,74.2570],[16.6850,74.2520]], km:{you:0,rahul:0,sneha:0.3,amit:0.6}},
+  {id:'shahu',     name:'Shahu Stadium',         area:'Shahu Nagar, North',          coords:[[16.7160,74.2370],[16.7200,74.2420],[16.7170,74.2460],[16.7140,74.2410]], km:{you:0,rahul:0.7,sneha:0,amit:0.2}},
+  {id:'panchganga',name:'Panchganga Ghat',       area:'Panchganga River, South',     coords:[[16.6860,74.2330],[16.6900,74.2370],[16.6870,74.2410],[16.6830,74.2370]], km:{you:0,rahul:0,sneha:0,amit:0}},
+];
+
+// TRACKS with area labels
+const TRACKS = [
+  {
+    id:'3k_rankala', name:'Rankala Lake Loop', area:'Rankala, West Kolhapur', dist:'3K', km:3,
+    desc:'Scenic loop around Rankala Lake via the lakeside path', difficulty:'easy',
+    tags:['Scenic','Flat','Beginner'],
+    start:[16.7000,74.2290],
+    waypoints:[[16.7000,74.2290],[16.7030,74.2270],[16.7060,74.2300],[16.7070,74.2330],[16.7050,74.2370],[16.7020,74.2390],[16.6980,74.2370],[16.6960,74.2340],[16.6970,74.2300],[16.7000,74.2290]]
+  },
+  {
+    id:'3k_ncl', name:'New College Evening Run', area:'Rajaram Road, Central', dist:'3K', km:3,
+    desc:'Quick evening run through Rajaram Road and back via NCL', difficulty:'easy',
+    tags:['Road','Flat','Beginner'],
+    start:[16.7040,74.2330],
+    waypoints:[[16.7040,74.2330],[16.7060,74.2350],[16.7080,74.2370],[16.7070,74.2400],[16.7050,74.2420],[16.7030,74.2400],[16.7020,74.2370],[16.7030,74.2350],[16.7040,74.2330]]
+  },
+  {
+    id:'5k_tarabai', name:'Tarabai Park Circuit', area:'Tarabai Park, North', dist:'5K', km:5,
+    desc:'Through Tarabai Park and back via Rajaram Road', difficulty:'medium',
+    tags:['Park','Hills','Intermediate'],
+    start:[16.7080,74.2360],
+    waypoints:[[16.7080,74.2360],[16.7110,74.2390],[16.7140,74.2420],[16.7160,74.2450],[16.7140,74.2490],[16.7110,74.2510],[16.7080,74.2480],[16.7050,74.2450],[16.7030,74.2420],[16.7050,74.2390],[16.7080,74.2360]]
+  },
+  {
+    id:'5k_university', name:'University Ring Road', area:'Vidyanagar, South Kolhapur', dist:'5K', km:5,
+    desc:'Around Shivaji University campus — smooth roads, great shade', difficulty:'easy',
+    tags:['Campus','Flat','Beginner'],
+    start:[16.6990,74.2510],
+    waypoints:[[16.6990,74.2510],[16.7010,74.2540],[16.7030,74.2570],[16.7010,74.2600],[16.6980,74.2610],[16.6950,74.2580],[16.6940,74.2550],[16.6960,74.2520],[16.6990,74.2510]]
+  },
+  {
+    id:'5k_panchganga', name:'Panchganga River Run', area:'Panchganga River, South', dist:'5K', km:5,
+    desc:'Run along the riverbank with a stunning view of Panchganga Ghat', difficulty:'medium',
+    tags:['River','Scenic','Intermediate'],
+    start:[16.6860,74.2330],
+    waypoints:[[16.6860,74.2330],[16.6870,74.2370],[16.6890,74.2410],[16.6910,74.2440],[16.6930,74.2420],[16.6920,74.2380],[16.6900,74.2350],[16.6880,74.2320],[16.6860,74.2330]]
+  },
+  {
+    id:'8k_stadium', name:'Shahu Stadium Loop', area:'Shahu Nagar, North Kolhapur', dist:'8K', km:8,
+    desc:'Hard run through north Kolhapur — stadium, park, and back via main road', difficulty:'hard',
+    tags:['Stadium','Hard','Advanced'],
+    start:[16.7160,74.2370],
+    waypoints:[[16.7160,74.2370],[16.7190,74.2400],[16.7210,74.2440],[16.7190,74.2480],[16.7160,74.2500],[16.7130,74.2480],[16.7110,74.2450],[16.7120,74.2410],[16.7140,74.2380],[16.7160,74.2370]]
+  },
+  {
+    id:'10k_city', name:'Kolhapur City Grand Tour', area:'Full City Loop', dist:'10K', km:10,
+    desc:'The ultimate city run — Rankala → Mahalaxmi → Tarabai and back', difficulty:'hard',
+    tags:['City Tour','Mixed','Advanced'],
+    start:[16.7000,74.2290],
+    waypoints:[[16.7000,74.2290],[16.7030,74.2270],[16.7060,74.2310],[16.7070,74.2380],[16.7080,74.2420],[16.7070,74.2460],[16.7090,74.2460],[16.7120,74.2420],[16.7150,74.2410],[16.7130,74.2370],[16.7100,74.2340],[16.7060,74.2340],[16.7040,74.2380],[16.7030,74.2410],[16.7010,74.2440],[16.6990,74.2460],[16.6970,74.2430],[16.6960,74.2390],[16.6970,74.2340],[16.6990,74.2300],[16.7000,74.2290]]
+  },
+];
+
+let selectedTrack = TRACKS[0];
+let mapInitialized = false;
+let map, youMarker, yourLine, trackLine;
+const yourPath = [];
+const zonePolygons = {};
+
+function initApp() {
+  const user = window._currentUser;
+  if (user) {
+    const initial = (user.displayName||user.email||'U')[0].toUpperCase();
+    document.getElementById('userAvatar').textContent = initial;
+    document.getElementById('drawerAvatar').textContent = initial;
+    document.getElementById('drawerName').textContent = user.displayName || user.email;
+    PLAYERS.you.name = user.displayName || 'You';
+  }
+  if (!mapInitialized) { mapInitialized=true; setTimeout(initMap,100); }
+  renderTracks();
+  updateUI();
+  showToast('👋 Welcome, '+(user?.displayName||'Runner')+'!');
+}
+
+function initMap() {
+  map = L.map('map',{zoomControl:false}).setView([16.7050,74.2433],14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19
+  }).addTo(map);
+  L.control.zoom({position:'topleft'}).addTo(map);
+  const youIcon = L.divIcon({html:`<div style="width:16px;height:16px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 14px rgba(255,77,0,1)"></div>`,className:'',iconAnchor:[8,8]});
+  youMarker = L.marker([16.7050,74.2433],{icon:youIcon}).addTo(map);
+  yourLine = L.polyline([],{color:'#ff4d00',weight:4,opacity:0.9}).addTo(map);
+  trackLine = L.polyline([],{color:'#00c8ff',weight:3,opacity:0.6,dashArray:'8,6'}).addTo(map);
+  const friendPos = {rahul:[16.7010,74.2280],sneha:[16.6990,74.2520],amit:[16.7070,74.2440]};
+  Object.entries(friendPos).forEach(([pid,pos])=>{
+    const p=PLAYERS[pid];
+    L.marker(pos,{icon:L.divIcon({html:`<div style="width:12px;height:12px;border-radius:50%;background:${p.color};border:2px solid white;box-shadow:0 0 8px ${p.color}aa"></div>`,className:'',iconAnchor:[6,6]})}).addTo(map).bindTooltip(p.name);
+  });
+  drawZones();
+}
+
+function getOwner(zone) {
+  let best=null,bestKm=0;
+  for(const[pid,km] of Object.entries(zone.km)){if(km>bestKm){bestKm=km;best=pid;}}
+  return best&&bestKm>0?best:null;
+}
+
+function drawZones() {
+  if(!map) return;
+  ZONES_DEF.forEach(z=>{
+    if(zonePolygons[z.id]) map.removeLayer(zonePolygons[z.id]);
+    const owner=getOwner(z);
+    const color=owner?PLAYERS[owner].color:'#333350';
+    const total=Object.values(z.km).reduce((a,b)=>a+b,0);
+    const opacity=owner?0.3+Math.min(total/10,0.35):0.12;
+    const poly=L.polygon(z.coords,{color,fillColor:color,weight:2,fillOpacity:opacity,opacity:0.85}).addTo(map);
+    poly.bindTooltip(`<b>${z.name}</b><br><i>${z.area}</i><br>${owner?PLAYERS[owner].name:'Unclaimed'}`,{sticky:true});
+    zonePolygons[z.id]=poly;
+  });
+}
+
+function renderTracks() {
+  document.getElementById('trackGrid').innerHTML = TRACKS.map(t=>`
+    <div class="track-card ${t.id===selectedTrack.id?'selected':''}" onclick="selectTrack('${t.id}')">
+      <div class="track-dist">${t.dist}<br><span>km</span></div>
+      <div class="track-info">
+        <div class="track-name">${t.name}</div>
+        <div class="track-area">📍 ${t.area}</div>
+        <div class="track-desc">${t.desc}</div>
+        <div class="track-tags">
+          <span class="tag ${t.difficulty}">${t.difficulty.toUpperCase()}</span>
+          ${t.tags.map(tag=>`<span class="tag">${tag}</span>`).join('')}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function selectTrack(id) { selectedTrack=TRACKS.find(t=>t.id===id); renderTracks(); }
+
+function startSelectedTrack() {
+  switchTab('map');
+  setTimeout(()=>{
+    if(!map) return;
+    trackLine.setLatLngs(selectedTrack.waypoints);
+    map.fitBounds(L.polyline(selectedTrack.waypoints).getBounds(),{padding:[40,40]});
+    youMarker.setLatLng(selectedTrack.start);
+    showToast(`🏃 ${selectedTrack.name} loaded! Hit START RUN`);
+    L.marker(selectedTrack.start,{icon:L.divIcon({
+      html:`<div style="background:#00c8ff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:11px;padding:3px 7px;border-radius:20px;white-space:nowrap;font-weight:700;">START</div>`,
+      className:'',iconAnchor:[20,10]
+    })}).addTo(map);
+  },60);
+}
+
+let running=false,watchId=null,seconds=0,timerInt=null,totalDist=0,demoInt=null,demoStep=0;
+
+function toggleRun() {
+  running=!running;
+  const btn=document.getElementById('runBtn');
+  if(running) {
+    btn.textContent='STOP RUN';btn.classList.add('running');
+    seconds=0;yourPath.length=0;if(yourLine)yourLine.setLatLngs([]);
+    timerInt=setInterval(()=>{
+      seconds++;
+      document.getElementById('timer').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+    },1000);
+    if(navigator.geolocation){
+      watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true});
+      showToast('📍 GPS locked — go!');
+    } else { showToast('Demo mode'); startDemo(); }
+  } else {
+    btn.textContent='START RUN';btn.classList.remove('running');
+    clearInterval(timerInt);clearInterval(demoInt);
+    if(watchId) navigator.geolocation.clearWatch(watchId);
+    showRunSummary();
+    if(window._currentUser&&totalDist>0){
+      window.fbSaveRun(window._currentUser.uid,totalDist,PLAYERS.you.zones).catch(()=>{});
+    }
+  }
+}
+
+function startDemo() {
+  const pts=selectedTrack.waypoints; demoStep=0;
+  demoInt=setInterval(()=>{ if(!running)return; movePlayer(pts[demoStep%pts.length]); demoStep++; },900);
+}
+function onGPS(pos){movePlayer([pos.coords.latitude,pos.coords.longitude]);}
+function onGPSErr(){showToast('GPS error — demo mode');startDemo();}
+
+function movePlayer(pos) {
+  if(yourPath.length>0){
+    const d=getDistKm(yourPath[yourPath.length-1],pos);
+    totalDist+=d;PLAYERS.you.km+=d;
+    document.getElementById('distVal').textContent=totalDist.toFixed(2);
+    ZONES_DEF.forEach(z=>{if(isInside(pos,z.coords))z.km.you+=d;});
+    updateUI();
+  }
+  yourPath.push(pos);
+  if(yourLine)yourLine.setLatLngs(yourPath);
+  if(youMarker){youMarker.setLatLng(pos);map.panTo(pos,{animate:true,duration:0.5});}
+}
+
+function simulateFriends() {
+  showToast('⚡ Friends running...');
+  const friends=['rahul','sneha','amit'];let n=0;
+  const iv=setInterval(()=>{
+    const f=friends[Math.floor(Math.random()*3)];
+    const z=ZONES_DEF[Math.floor(Math.random()*ZONES_DEF.length)];
+    const prev=getOwner(z);
+    z.km[f]+=Math.random()*0.4+0.1;PLAYERS[f].km+=0.2;
+    if(getOwner(z)!==prev&&prev)setTimeout(()=>showToast(`🔥 ${PLAYERS[f].name} captured ${z.name}!`),200);
+    drawZones();updateUI();
+    if(++n>=8)clearInterval(iv);
+  },600);
+}
+
+function updateUI() {
+  drawZones();
+  Object.keys(PLAYERS).forEach(p=>PLAYERS[p].zones=0);
+  ZONES_DEF.forEach(z=>{const o=getOwner(z);if(o)PLAYERS[o].zones++;});
+  document.getElementById('zonesWon').textContent=PLAYERS.you.zones;
+  const sorted=Object.entries(PLAYERS).sort((a,b)=>b[1].km-a[1].km);
+  const ranks=['gold','silver','bronze',''];
+  document.getElementById('lbList').innerHTML=sorted.map(([pid,p],i)=>`
+    <div class="player-card ${pid==='you'?'you':''}">
+      <div class="rank ${ranks[i]||''}">${i+1}</div>
+      <div class="pdot" style="background:${p.color}"></div>
+      <div style="flex:1"><div class="pname">${p.name}${pid==='you'?' 👤':''}</div><div class="pzones">${p.zones} zone${p.zones!==1?'s':''}</div></div>
+      <div class="pkm">${p.km.toFixed(1)}<span>km</span></div>
+    </div>`).join('');
+  document.getElementById('zonesList').innerHTML=ZONES_DEF.map(z=>{
+    const owner=getOwner(z);
+    const oc=owner?PLAYERS[owner].color:'#333350';
+    const total=Object.values(z.km).reduce((a,b)=>a+b,0);
+    const youPct=total>0?z.km.you/total*100:0;
+    const kmRow=Object.entries(z.km).map(([pid,km])=>
+      `<div class="zone-km-item"><div style="width:6px;height:6px;border-radius:50%;background:${PLAYERS[pid].color}"></div>${PLAYERS[pid].name}: ${km.toFixed(1)}km</div>`
+    ).join('');
+    return `<div class="zone-card" onclick="flyTo('${z.id}')">
+      <div class="zone-name">${z.name}</div>
+      <div class="zone-area">📍 ${z.area}</div>
+      <div class="zone-owner"><div class="zodot" style="background:${oc}"></div>${owner?PLAYERS[owner].name:'Unclaimed'}</div>
+      <div class="zone-km-row">${kmRow}</div>
+      <div class="zone-bar-wrap"><div class="zone-bar" style="width:${youPct}%;background:#ff4d00"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  ['map','tracks','leaderboard','zones'].forEach(n=>{
+    const el=document.getElementById('ditem-'+n);
+    if(el) el.classList.toggle('active',n===name);
+  });
+  if(name==='map'&&map) setTimeout(()=>map.invalidateSize(),50);
+}
+
+function flyTo(id) {
+  const z=ZONES_DEF.find(z=>z.id===id);if(!z)return;
+  switchTab('map');
+  setTimeout(()=>map.fitBounds(L.polygon(z.coords).getBounds(),{padding:[40,40]}),60);
+}
+
+function getDistKm(a,b){
+  const R=6371,dLat=(b[0]-a[0])*Math.PI/180,dLng=(b[1]-a[1])*Math.PI/180;
+  const s=Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function isInside(point,poly){
+  const[lat,lng]=point;let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const[yi,xi]=poly[i],[yj,xj]=poly[j];
+    if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+let toastTO;
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTO);toastTO=setTimeout(()=>t.classList.remove('show'),3000);
+}
+</script>
+</body>
+</html>
