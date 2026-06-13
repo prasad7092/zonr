@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZONR — Maharashtra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDQOfcnkcxV9dLxt8uFddkov2aNNVMVbUs",
+  authDomain: "turfwar-3b38a.firebaseapp.com",
+  projectId: "turfwar-3b38a",
+  storageBucket: "turfwar-3b38a.firebasestorage.app",
+  messagingSenderId: "179531351302",
+  appId: "1:179531351302:web:f7840c8cdd50cb86efca87"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+window._auth = auth; window._db = db;
+
+window.fbSignup = async (name, email, pass) => {
+  const cred = await createUserWithEmailAndPassword(auth, email, pass);
+  await updateProfile(cred.user, { displayName: name });
+  await setDoc(doc(db, "users", cred.user.uid), { name, email, km: 0, zones: 0, createdAt: Date.now() });
+  return cred.user;
+};
+window.fbLogin = async (email, pass) => { const cred = await signInWithEmailAndPassword(auth, email, pass); return cred.user; };
+window.fbLogout = () => signOut(auth);
+window.fbSaveRun = async (uid, km, zones) => {
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) { const d = snap.data(); await updateDoc(ref, { km:(d.km||0)+km, zones:Math.max(d.zones||0,zones) }); }
+};
+window.fbCreateRoom = async (hostName, size) => {
+  const code = Math.random().toString(36).substring(2,8).toUpperCase();
+  const uid = window._currentUser?.uid || 'anon';
+  await setDoc(doc(db, "rooms", code), {
+    code, host: hostName, hostUid: uid, maxPlayers: size,
+    players: [{ uid, name: hostName, zones: 0, km: 0 }],
+    status: 'waiting', createdAt: Date.now(), startedAt: null, endsAt: null, winner: null
+  });
+  return code;
+};
+window.fbJoinRoom = async (code) => {
+  const ref = doc(db, "rooms", code);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Room not found");
+  const data = snap.data();
+  if (data.status !== 'waiting') throw new Error("Room already started");
+  if (data.players.length >= data.maxPlayers) throw new Error("Room is full");
+  const uid = window._currentUser?.uid;
+  const name = window._currentUser?.displayName || 'Runner';
+  if (!data.players.find(p => p.uid === uid)) {
+    const players = [...data.players, { uid, name, zones: 0, km: 0 }];
+    let update = { players };
+    if (players.length === data.maxPlayers) { update.status='active'; update.startedAt=Date.now(); update.endsAt=Date.now()+7*24*60*60*1000; }
+    await updateDoc(ref, update);
+  }
+  return snap.data();
+};
+
+// Load all rooms user is part of
+window.fbLoadUserRooms = async (uid) => {
+  const snap = await getDocs(collection(db, "rooms"));
+  const rooms = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.players && data.players.find(p => p.uid === uid)) {
+      rooms.push(data);
+    }
+  });
+  return rooms.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+};
+
+onAuthStateChanged(auth, user => {
+  window._currentUser = user;
+  if (user) {
+    document.getElementById('authModal').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('userNameDisplay').textContent = user.displayName || user.email;
+    initApp();
+  } else {
+    document.getElementById('authModal').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+</script>
+<style>
+:root{--bg:#0a0a0f;--panel:#11111a;--panel2:#181824;--border:#1e1e2e;--accent:#ff4d00;--accent2:#00c8ff;--green:#00e87a;--gold:#ffd700;--text:#eeeef5;--muted:#55557a;--radius:12px;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;height:100vh;overflow:hidden;}
+
+/* AUTH */
+#authModal{position:fixed;inset:0;background:linear-gradient(135deg,#0a0a0f 60%,#1a0a00);display:flex;align-items:center;justify-content:center;z-index:9999;}
+.auth-wrap{display:flex;flex-direction:column;align-items:center;gap:0;}
+.auth-brand{text-align:center;margin-bottom:28px;}
+.auth-brand-logo{font-family:'Bebas Neue',sans-serif;font-size:56px;letter-spacing:8px;color:var(--accent);text-shadow:0 0 40px rgba(255,77,0,0.7),0 0 80px rgba(255,77,0,0.3);line-height:1;}
+.auth-brand-logo span{color:var(--text);}
+.auth-brand-sub{font-size:11px;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-top:4px;}
+.auth-box{background:rgba(17,17,26,0.95);border:1px solid var(--border);border-radius:20px;padding:32px 28px;width:340px;box-shadow:0 0 60px rgba(255,77,0,0.08),0 40px 80px rgba(0,0,0,0.4);animation:authIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;}
+.auth-brand{animation:authIn 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.1s both;}
+@keyframes authIn{0%{opacity:0;transform:translateY(30px) scale(0.95);}100%{opacity:1;transform:translateY(0) scale(1);}}
+.auth-tabs{display:flex;margin-bottom:22px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:all 0.2s;}
+.auth-tab.active{background:var(--accent);color:white;}
+.auth-field{margin-bottom:13px;}
+.auth-field label{font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.auth-field input{width:100%;padding:11px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border 0.2s;}
+.auth-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,77,0,0.1);}
+.auth-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;margin-top:4px;transition:all 0.2s;box-shadow:0 0 24px rgba(255,77,0,0.35);}
+.auth-btn:hover{background:#ff6120;transform:translateY(-1px);}
+.auth-err{color:#ff6060;font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+
+/* APP */
+#app{display:none;flex-direction:column;height:100vh;}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);z-index:1000;flex-shrink:0;}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 16px rgba(255,77,0,0.5);}
+.logo span{color:var(--text);}
+.city-sub{font-size:9px;color:var(--muted);letter-spacing:2px;}
+.hright{display:flex;gap:10px;align-items:center;}
+.stat{text-align:center;}
+.stat-val{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--accent);line-height:1;}
+.stat-label{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+#timer{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--accent2);letter-spacing:2px;}
+.user-chip{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:4px 10px 4px 4px;cursor:pointer;font-size:11px;font-weight:600;transition:border 0.2s;}
+.user-chip:hover{border-color:var(--accent);}
+.user-avatar{width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:white;}
+.menu-btn{width:34px;height:34px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;flex-shrink:0;transition:all 0.2s;}
+.menu-btn:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(255,77,0,0.2);}
+.menu-dot{width:4px;height:4px;border-radius:50%;background:var(--text);}
+
+/* DRAWER */
+.drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:2000;opacity:0;pointer-events:none;transition:opacity 0.3s;backdrop-filter:blur(2px);}
+.drawer-overlay.open{opacity:1;pointer-events:all;}
+.drawer{position:fixed;left:0;top:0;bottom:0;width:265px;background:var(--panel);border-right:1px solid var(--border);z-index:2001;transform:translateX(-100%);transition:transform 0.32s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;}
+.drawer.open{transform:translateX(0);}
+.drawer-header{padding:18px 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.drawer-logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 16px rgba(255,77,0,0.4);}
+.drawer-logo span{color:var(--text);}
+.drawer-tagline{font-size:9px;color:var(--muted);letter-spacing:2px;margin-top:1px;}
+.drawer-close{width:28px;height:28px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--muted);transition:all 0.2s;}
+.drawer-close:hover{border-color:var(--accent);color:var(--text);}
+.drawer-nav{flex:1;padding:8px 0;overflow-y:auto;}
+.drawer-item{display:flex;align-items:center;gap:13px;padding:13px 18px;cursor:pointer;transition:all 0.18s;border-left:3px solid transparent;}
+.drawer-item:hover{background:rgba(255,77,0,0.06);border-left-color:rgba(255,77,0,0.3);}
+.drawer-item.active{background:rgba(255,77,0,0.1);border-left-color:var(--accent);}
+.drawer-icon{font-size:17px;width:22px;text-align:center;}
+.drawer-label{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;flex:1;}
+.drawer-badge{background:var(--accent);color:white;font-size:8px;font-weight:700;padding:2px 6px;border-radius:10px;letter-spacing:1px;}
+.drawer-divider{height:1px;background:var(--border);margin:6px 18px;}
+.drawer-footer{padding:14px 18px;border-top:1px solid var(--border);}
+.drawer-avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:17px;color:white;}
+.drawer-username{font-size:13px;font-weight:700;}
+.drawer-logout{font-size:10px;color:var(--muted);cursor:pointer;margin-top:2px;transition:color 0.2s;}
+.drawer-logout:hover{color:var(--accent);}
+
+/* PAGES */
+.page{display:none;flex:1;overflow:hidden;flex-direction:column;opacity:0;transform:translateY(8px);transition:opacity 0.3s ease,transform 0.3s ease;}
+.page.active{display:flex;animation:pageIn 0.28s cubic-bezier(0.4,0,0.2,1) forwards;}
+@keyframes pageIn{0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);}}
+
+/* MAP */
+#map{flex:1;width:100%;z-index:1;}
+.map-overlay{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:900;display:flex;gap:10px;align-items:center;}
+.btn-run{padding:13px 34px;border-radius:50px;border:none;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;background:var(--accent);color:white;box-shadow:0 0 30px rgba(255,77,0,0.6),0 4px 20px rgba(0,0,0,0.4);transition:all 0.2s;}
+.btn-run:hover{transform:scale(1.04);}
+.btn-run.running{background:#cc3300;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(255,77,0,0.4);}50%{box-shadow:0 0 50px rgba(255,77,0,1);}}
+
+/* city filter bar */
+.city-filter{display:flex;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
+.city-filter::-webkit-scrollbar{display:none;}
+.city-pill{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all 0.2s;flex-shrink:0;}
+.city-pill:hover{border-color:var(--accent2);color:var(--accent2);}
+.city-pill.active{background:var(--accent);border-color:var(--accent);color:white;}
+
+/* SCROLL */
+.scroll-page{padding:14px;overflow-y:auto;flex:1;}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;}
+
+/* TRACKS */
+.track-grid{display:flex;flex-direction:column;gap:10px;}
+.track-card{background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;cursor:pointer;transition:all 0.25s cubic-bezier(0.4,0,0.2,1);display:flex;align-items:flex-start;gap:12px;}
+.track-card:hover{border-color:var(--accent);transform:translateX(4px);box-shadow:0 0 24px rgba(255,77,0,0.12);background:rgba(255,77,0,0.04);}
+.track-card.selected{border-color:var(--accent);background:rgba(255,77,0,0.09);box-shadow:0 0 30px rgba(255,77,0,0.15);}
+.track-dist{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--accent);line-height:1;min-width:48px;text-align:center;}
+.track-dist span{font-size:12px;color:var(--muted);}
+.track-info{flex:1;}
+.track-name{font-size:13px;font-weight:700;margin-bottom:1px;}
+.track-city{font-size:10px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
+.track-desc{font-size:11px;color:var(--muted);}
+.track-tags{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;}
+.tag{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:var(--panel);border:1px solid var(--border);color:var(--muted);}
+.tag.easy{border-color:#00e87a44;color:var(--green);}
+.tag.medium{border-color:#ffaa0044;color:#ffaa00;}
+.tag.hard{border-color:#ff4d0044;color:var(--accent);}
+.btn-start-track{width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;cursor:pointer;margin-top:12px;box-shadow:0 0 20px rgba(255,77,0,0.25);transition:all 0.2s;}
+.btn-start-track:hover{background:#ff6120;}
+
+/* LEADERBOARD */
+.player-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);margin-bottom:8px;transition:all 0.2s;}
+.player-card:hover{transform:translateX(3px);border-color:rgba(255,255,255,0.1);}
+.player-card.you{border-color:rgba(255,77,0,0.4);background:rgba(255,77,0,0.05);box-shadow:0 0 20px rgba(255,77,0,0.06);}
+.rank{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--muted);width:28px;text-align:center;}
+.rank.gold{color:#ffd700;}.rank.silver{color:#c0c0c0;}.rank.bronze{color:#cd7f32;}
+.pdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.pname{font-size:14px;font-weight:700;}
+.pzones{font-size:11px;color:var(--muted);margin-top:2px;}
+.pkm{font-family:'Bebas Neue',sans-serif;font-size:22px;}
+.pkm span{font-size:11px;color:var(--muted);}
+
+/* ZONES */
+.zone-card{padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);cursor:pointer;transition:all 0.22s cubic-bezier(0.4,0,0.2,1);margin-bottom:6px;}
+.zone-card:hover{border-color:rgba(255,77,0,0.5);transform:translateX(4px);background:rgba(255,77,0,0.04);box-shadow:0 0 20px rgba(255,77,0,0.08);}
+.zone-name{font-size:13px;font-weight:700;margin-bottom:1px;}
+.zone-city{font-size:10px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
+.zone-owner{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+.zodot{width:8px;height:8px;border-radius:50%;}
+.zone-bar-wrap{margin-top:7px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.zone-bar{height:100%;border-radius:2px;transition:width 0.4s;}
+
+/* RACE WEEK */
+.race-hero{background:linear-gradient(135deg,rgba(255,77,0,0.12),rgba(0,200,255,0.06));border:1px solid rgba(255,77,0,0.18);border-radius:16px;padding:18px;margin-bottom:14px;text-align:center;}
+.race-hero-title{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent);margin-bottom:3px;}
+.race-hero-sub{font-size:11px;color:var(--muted);line-height:1.6;}
+.race-actions{display:flex;gap:10px;margin-bottom:18px;}
+.btn-race{flex:1;padding:13px;border-radius:10px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.btn-race.primary{background:var(--accent);color:white;box-shadow:0 0 20px rgba(255,77,0,0.25);}
+.btn-race.primary:hover{background:#ff6120;}
+.btn-race.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+.btn-race.secondary:hover{border-color:var(--accent2);color:var(--accent2);}
+.room-card{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px;transition:all 0.25s;animation:slideUp 0.35s cubic-bezier(0.4,0,0.2,1) both;}
+.room-card:hover{border-color:rgba(255,77,0,0.3);box-shadow:0 0 30px rgba(255,77,0,0.06);}
+@keyframes slideUp{0%{opacity:0;transform:translateY(16px);}100%{opacity:1;transform:translateY(0);}}
+.room-code{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:7px;color:var(--accent);text-align:center;margin-bottom:4px;text-shadow:0 0 20px rgba(255,77,0,0.4);}
+.room-status-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;}
+.room-badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1px;}
+.room-badge.waiting{background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.3);color:#ffaa00;}
+.room-badge.active{background:rgba(0,232,122,0.1);border:1px solid rgba(0,232,122,0.3);color:var(--green);}
+.room-badge.ended{background:rgba(255,77,0,0.1);border:1px solid rgba(255,77,0,0.3);color:var(--accent);}
+.room-players{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.room-player{display:flex;align-items:center;gap:9px;padding:7px 10px;background:var(--panel);border-radius:8px;}
+.room-player-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
+.room-player-name{font-size:12px;font-weight:600;flex:1;}
+.room-player-stat{font-size:10px;color:var(--muted);}
+.room-share-btn{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,200,255,0.3);background:transparent;color:var(--accent2);font-weight:600;font-size:12px;cursor:pointer;transition:all 0.2s;}
+.room-share-btn:hover{background:rgba(0,200,255,0.06);}
+.race-countdown{font-family:'Bebas Neue',sans-serif;font-size:12px;color:var(--muted);text-align:center;letter-spacing:1px;margin-top:6px;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:5000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.25s;backdrop-filter:blur(4px);}
+.modal-overlay.show{opacity:1;pointer-events:all;}
+.modal-box{background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:26px 22px;width:310px;max-width:92vw;transform:translateY(30px) scale(0.96);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);}
+.modal-overlay.show .modal-box{transform:translateY(0) scale(1);}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--accent);margin-bottom:16px;}
+.modal-field{margin-bottom:13px;}
+.modal-field label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.modal-field input,.modal-field select{width:100%;padding:10px 13px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;}
+.modal-field input:focus,.modal-field select:focus{border-color:var(--accent);}
+.modal-field select option{background:var(--panel2);}
+.modal-btns{display:flex;gap:10px;margin-top:4px;}
+.modal-btn{flex:1;padding:11px;border-radius:8px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.modal-btn.confirm{background:var(--accent);color:white;}
+.modal-btn.confirm:hover{background:#ff6120;}
+.modal-btn.cancel{background:var(--panel2);color:var(--muted);border:1px solid var(--border);}
+.modal-err{color:#ff6060;font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+
+/* SUMMARY */
+.summary-overlay{position:fixed;inset:0;background:rgba(5,5,10,0.96);z-index:8000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.4s;}
+.summary-overlay.show{opacity:1;pointer-events:all;}
+.summary-box{background:var(--panel);border:1px solid var(--border);border-radius:24px;padding:28px 24px;width:340px;max-width:92vw;transform:translateY(60px) scale(0.88);transition:transform 0.55s cubic-bezier(0.34,1.56,0.64,1);position:relative;overflow:hidden;}
+.summary-overlay.show .summary-box{transform:translateY(0) scale(1);}
+.confetti-wrap{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;}
+.cp{position:absolute;animation:cfFall linear forwards;}
+@keyframes cfFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1;}100%{transform:translateY(420px) rotate(720deg);opacity:0;}}
+.summary-header{text-align:center;margin-bottom:20px;position:relative;}
+.sum-emoji{font-size:50px;line-height:1;margin-bottom:6px;animation:popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.25s both;}
+@keyframes popIn{0%{transform:scale(0) rotate(-20deg);opacity:0;}100%{transform:scale(1) rotate(0deg);opacity:1;}}
+.sum-title{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:var(--accent);}
+.sum-sub{font-size:11px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+.sum-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;}
+.sum-stat{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;}
+.sum-stat.full{grid-column:1/-1;}
+.ssv{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent);line-height:1;}
+.ssv.blue{color:var(--accent2);}
+.ssv.green{color:var(--green);}
+.ssv.gold{color:var(--gold);}
+.ssl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px;}
+.sum-zones-wrap{margin-bottom:14px;}
+.sum-zones-title{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.sum-zone-pill{display:inline-flex;align-items:center;gap:4px;background:rgba(255,77,0,0.08);border:1px solid rgba(255,77,0,0.25);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:600;margin:2px;color:var(--text);}
+.sum-btns{display:flex;gap:9px;}
+.sum-btn{flex:1;padding:12px;border-radius:11px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.sum-btn.main{background:var(--accent);color:white;box-shadow:0 0 20px rgba(255,77,0,0.3);}
+.sum-btn.main:hover{background:#ff6120;}
+.sum-btn.share-btn{background:var(--panel2);color:var(--accent2);border:1px solid rgba(0,200,255,0.25);}
+.sum-btn.share-btn:hover{background:rgba(0,200,255,0.07);}
+
+/* TOAST */
+.toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--panel);border:1px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9990;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);white-space:nowrap;box-shadow:0 0 30px rgba(255,77,0,0.2);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+
+/* custom map styles */
+.leaflet-container{background:#0a0a0f;}
+.leaflet-tile-pane{filter:brightness(0.45) saturate(0.3) hue-rotate(190deg);}
+.leaflet-overlay-pane canvas,.leaflet-shadow-pane,.leaflet-marker-pane{filter:none!important;}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="authModal">
+  <div class="auth-wrap">
+    <div class="auth-brand">
+      <div class="auth-brand-logo">ZON<span>R</span></div>
+      <div class="auth-brand-sub">🗺 Maharashtra · Claim Your Territory</div>
+    </div>
+    <div class="auth-box">
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">LOGIN</div>
+        <div class="auth-tab" id="tabSignup" onclick="showAuthTab('signup')">SIGN UP</div>
+      </div>
+      <div id="loginForm">
+        <div class="auth-field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@email.com"></div>
+        <div class="auth-field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••"></div>
+        <button class="auth-btn" onclick="doLogin()">LOGIN</button>
+      </div>
+      <div id="signupForm" style="display:none">
+        <div class="auth-field"><label>Your Name</label><input type="text" id="signupName" placeholder="Your name"></div>
+        <div class="auth-field"><label>Email</label><input type="email" id="signupEmail" placeholder="you@email.com"></div>
+        <div class="auth-field"><label>Password</label><input type="password" id="signupPass" placeholder="Min 6 characters"></div>
+        <button class="auth-btn" onclick="doSignup()">CREATE ACCOUNT</button>
+      </div>
+      <div class="auth-err" id="authErr"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DRAWER -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div><div class="drawer-logo">ZON<span>R</span></div><div class="drawer-tagline">MAHARASHTRA</div></div>
+    <div class="drawer-close" onclick="closeDrawer()">✕</div>
+  </div>
+  <div class="drawer-nav">
+    <div class="drawer-item active" id="ditem-map" onclick="switchTab('map');closeDrawer()"><div class="drawer-icon">🗺</div><div class="drawer-label">MAP</div></div>
+    <div class="drawer-item" id="ditem-tracks" onclick="switchTab('tracks');closeDrawer()"><div class="drawer-icon">🏃</div><div class="drawer-label">TRACKS</div></div>
+    <div class="drawer-item" id="ditem-leaderboard" onclick="switchTab('leaderboard');closeDrawer()"><div class="drawer-icon">🏆</div><div class="drawer-label">LEADERBOARD</div></div>
+    <div class="drawer-item" id="ditem-zones" onclick="switchTab('zones');closeDrawer()"><div class="drawer-icon">📍</div><div class="drawer-label">ZONES</div></div>
+    <div class="drawer-divider"></div>
+    <div class="drawer-item" id="ditem-race" onclick="switchTab('race');closeDrawer()"><div class="drawer-icon">🔥</div><div class="drawer-label">RACE WEEK</div><div class="drawer-badge">NEW</div></div>
+  </div>
+  <div class="drawer-footer">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="drawer-avatar" id="drawerAvatar">?</div>
+      <div><div class="drawer-username" id="drawerName">Runner</div><div class="drawer-logout" onclick="doLogout()">Log out →</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="menu-btn" onclick="openDrawer()"><div class="menu-dot"></div><div class="menu-dot"></div><div class="menu-dot"></div></div>
+      <div><div class="logo">ZON<span>R</span></div><div class="city-sub">🗺 MAHARASHTRA</div></div>
+    </div>
+    <div class="hright">
+      <div class="stat"><div class="stat-val" id="distVal">0.00</div><div class="stat-label">km</div></div>
+      <div class="stat"><div class="stat-val" id="zonesWon">0</div><div class="stat-label">zones</div></div>
+      <div id="timer">00:00</div>
+      <div class="user-chip" onclick="openDrawer()"><div class="user-avatar" id="userAvatar">?</div><span id="userNameDisplay">User</span></div>
+    </div>
+  </header>
+
+  <!-- MAP PAGE -->
+  <div class="page active" id="page-map" style="position:relative;">
+    <div class="city-filter" id="cityFilter"></div>
+    <div id="map"></div>
+    <div class="map-overlay">
+      <button class="btn-run" id="runBtn" onclick="toggleRun()">START RUN</button>
+    </div>
+  </div>
+
+  <!-- TRACKS PAGE -->
+  <div class="page" id="page-tracks" style="flex-direction:column;overflow:hidden;">
+    <div style="padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;" id="trackCityFilter"></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px;" id="trackScrollArea">
+      <div class="track-grid" id="trackGrid"></div>
+      <button class="btn-start-track" onclick="startSelectedTrack()">START SELECTED TRACK →</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD PAGE -->
+  <div class="page scroll-page" id="page-leaderboard">
+    <div class="section-title">RUNNERS — MAHARASHTRA</div>
+    <div id="lbList"></div>
+  </div>
+
+  <!-- ZONES PAGE -->
+  <div class="page scroll-page" id="page-zones">
+    <div class="section-title">ALL ZONES — MAHARASHTRA</div>
+    <div id="zonesList"></div>
+  </div>
+
+  <!-- RACE WEEK PAGE -->
+  <div class="page scroll-page" id="page-race">
+    <div class="race-hero">
+      <div class="race-hero-title">🔥 RACE WEEK</div>
+      <div class="race-hero-sub">Create a room · Share with friends · Run Maharashtra for 7 days · Most zones wins</div>
+    </div>
+    <div class="race-actions">
+      <button class="btn-race primary" onclick="openCreateRoom()">+ CREATE ROOM</button>
+      <button class="btn-race secondary" onclick="openJoinRoom()">JOIN ROOM</button>
+    </div>
+    <div class="section-title">YOUR ROOMS</div>
+    <div id="roomsList"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">No rooms yet — create or join one!</div></div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal-box">
+    <div class="modal-title">CREATE RACE ROOM</div>
+    <div class="modal-field"><label>Max Players</label>
+      <select id="roomSize">
+        <option value="2">2 Players</option><option value="3">3 Players</option>
+        <option value="4" selected>4 Players</option><option value="5">5 Players</option>
+        <option value="6">6 Players</option><option value="8">8 Players</option><option value="10">10 Players</option>
+      </select>
+    </div>
+    <div class="modal-err" id="createErr"></div>
+    <div class="modal-btns"><button class="modal-btn cancel" onclick="closeCreateRoom()">CANCEL</button><button class="modal-btn confirm" onclick="doCreateRoom()">CREATE →</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="joinModal">
+  <div class="modal-box">
+    <div class="modal-title">JOIN A ROOM</div>
+    <div class="modal-field"><label>Room Code</label><input type="text" id="joinCode" placeholder="e.g. AB12CD" style="text-transform:uppercase;letter-spacing:3px;font-family:'Bebas Neue',sans-serif;font-size:20px;"></div>
+    <div class="modal-err" id="joinErr"></div>
+    <div class="modal-btns"><button class="modal-btn cancel" onclick="closeJoinRoom()">CANCEL</button><button class="modal-btn confirm" onclick="doJoinRoom()">JOIN →</button></div>
+  </div>
+</div>
+
+<!-- RUN SUMMARY -->
+<div class="summary-overlay" id="summaryOverlay">
+  <div class="summary-box">
+    <div class="confetti-wrap" id="confettiWrap"></div>
+    <div class="summary-header">
+      <div class="sum-emoji" id="sumEmoji">🏅</div>
+      <div class="sum-title">RUN COMPLETE!</div>
+      <div class="sum-sub" id="sumSub">MAHARASHTRA · ZONR</div>
+    </div>
+    <div class="sum-stats">
+      <div class="sum-stat"><div class="ssv" id="sumDist">0.00</div><div class="ssl">Kilometres</div></div>
+      <div class="sum-stat"><div class="ssv blue" id="sumTime">00:00</div><div class="ssl">Duration</div></div>
+      <div class="sum-stat"><div class="ssv green" id="sumPace">—</div><div class="ssl">Pace /km</div></div>
+      <div class="sum-stat"><div class="ssv gold" id="sumZonesCount">0</div><div class="ssl">Zones Entered</div></div>
+    </div>
+    <div class="sum-zones-wrap" id="sumZonesWrap"></div>
+    <div class="sum-btns">
+      <button class="sum-btn share-btn" onclick="shareRun()">📤 SHARE</button>
+      <button class="sum-btn main" onclick="closeSummary()">DONE →</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── AUTH ───────────────────────────────────────────────
+function showAuthTab(t){
+  document.getElementById('tabLogin').classList.toggle('active',t==='login');
+  document.getElementById('tabSignup').classList.toggle('active',t==='signup');
+  document.getElementById('loginForm').style.display=t==='login'?'block':'none';
+  document.getElementById('signupForm').style.display=t==='signup'?'block':'none';
+  document.getElementById('authErr').textContent='';
+}
+async function doLogin(){
+  try{await window.fbLogin(document.getElementById('loginEmail').value.trim(),document.getElementById('loginPass').value);}
+  catch(e){document.getElementById('authErr').textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
+}
+async function doSignup(){
+  const name=document.getElementById('signupName').value.trim();
+  if(!name){document.getElementById('authErr').textContent='Please enter your name';return;}
+  try{await window.fbSignup(name,document.getElementById('signupEmail').value.trim(),document.getElementById('signupPass').value);}
+  catch(e){document.getElementById('authErr').textContent=e.message.replace('Firebase:','').replace(/\(.*\)/,'').trim();}
+}
+function doLogout(){if(confirm('Log out of ZONR?'))window.fbLogout();}
+
+// ── DRAWER ─────────────────────────────────────────────
+function openDrawer(){document.getElementById('drawer').classList.add('open');document.getElementById('drawerOverlay').classList.add('open');}
+function closeDrawer(){document.getElementById('drawer').classList.remove('open');document.getElementById('drawerOverlay').classList.remove('open');}
+
+// ── MAHARASHTRA ZONES ──────────────────────────────────
+const ZONES_DEF = [
+  // MUMBAI
+  {id:'marine',   city:'Mumbai', name:'Marine Drive',         coords:[[18.9440,72.8230],[18.9480,72.8250],[18.9500,72.8220],[18.9460,72.8200]]},
+  {id:'bandra',   city:'Mumbai', name:'Bandra Bandstand',     coords:[[19.0440,72.8190],[19.0480,72.8220],[19.0460,72.8260],[19.0420,72.8230]]},
+  {id:'juhu',     city:'Mumbai', name:'Juhu Beach',           coords:[[19.0960,72.8270],[19.1000,72.8310],[19.0970,72.8350],[19.0930,72.8310]]},
+  {id:'sion',     city:'Mumbai', name:'Sion Fort Loop',       coords:[[19.0390,72.8600],[19.0430,72.8640],[19.0410,72.8680],[19.0370,72.8640]]},
+  // PUNE
+  {id:'shivajinagar', city:'Pune', name:'Shivajinagar Garden',  coords:[[18.5320,73.8480],[18.5360,73.8520],[18.5340,73.8560],[18.5300,73.8520]]},
+  {id:'koregaon',     city:'Pune', name:'Koregaon Park',        coords:[[18.5360,73.8930],[18.5400,73.8970],[18.5380,73.9010],[18.5340,73.8970]]},
+  {id:'katraj',       city:'Pune', name:'Katraj Lake Trail',    coords:[[18.4540,73.8630],[18.4580,73.8670],[18.4560,73.8710],[18.4520,73.8670]]},
+  {id:'mulshi',       city:'Pune', name:'Mulshi Dam Road',      coords:[[18.5100,73.5200],[18.5140,73.5260],[18.5110,73.5310],[18.5070,73.5250]]},
+  // NASHIK
+  {id:'godavari',   city:'Nashik', name:'Godavari Ghats',      coords:[[20.0010,73.7830],[20.0050,73.7870],[20.0030,73.7910],[19.9990,73.7870]]},
+  {id:'panchvati',  city:'Nashik', name:'Panchvati Loop',      coords:[[20.0060,73.7780],[20.0100,73.7820],[20.0080,73.7860],[20.0040,73.7820]]},
+  // NAGPUR
+  {id:'semaphore',  city:'Nagpur', name:'Ambazari Lake',        coords:[[21.1280,79.0380],[21.1320,79.0420],[21.1300,79.0460],[21.1260,79.0420]]},
+  {id:'sitabuldi',  city:'Nagpur', name:'Sitabuldi Fort Area',  coords:[[21.1450,79.0820],[21.1490,79.0860],[21.1470,79.0900],[21.1430,79.0860]]},
+  // AURANGABAD
+  {id:'bibi',       city:'Aurangabad', name:'Bibi Ka Maqbara', coords:[[19.9010,75.3190],[19.9050,75.3230],[19.9030,75.3270],[19.8990,75.3230]]},
+  {id:'daulatabad', city:'Aurangabad', name:'Daulatabad Fort',  coords:[[19.9430,75.2170],[19.9470,75.2210],[19.9450,75.2250],[19.9410,75.2210]]},
+  // KOLHAPUR
+  {id:'rankala',    city:'Kolhapur', name:'Rankala Lake Trail', coords:[[16.7020,74.2270],[16.7060,74.2330],[16.7000,74.2370],[16.6960,74.2310],[16.6980,74.2260]]},
+  {id:'mahalaxmi',  city:'Kolhapur', name:'Mahalaxmi Temple',  coords:[[16.7060,74.2410],[16.7090,74.2460],[16.7050,74.2490],[16.7020,74.2440]]},
+  {id:'tarabai',    city:'Kolhapur', name:'Tarabai Park',      coords:[[16.7110,74.2350],[16.7150,74.2410],[16.7110,74.2450],[16.7070,74.2390]]},
+  // SOLAPUR
+  {id:'siddheshwar',city:'Solapur', name:'Siddheshwar Lake',   coords:[[17.6870,75.9060],[17.6910,75.9100],[17.6890,75.9140],[17.6850,75.9100]]},
+  // SATARA
+  {id:'kaas',       city:'Satara', name:'Kas Plateau Trail',   coords:[[17.7190,73.8140],[17.7230,73.8180],[17.7210,73.8220],[17.7170,73.8180]]},
+  // SANGLI
+  {id:'sanglifort', city:'Sangli', name:'Sangli Fort Run',     coords:[[16.8560,74.5690],[16.8600,74.5730],[16.8580,74.5770],[16.8540,74.5730]]},
+  // NANDED
+  {id:'hazur',      city:'Nanded', name:'Hazur Sahib Area',    coords:[[19.1530,77.3180],[19.1570,77.3220],[19.1550,77.3260],[19.1510,77.3220]]},
+  // AMRAVATI
+  {id:'ambadevi',   city:'Amravati', name:'Ambadevi Temple',   coords:[[20.9340,77.7700],[20.9380,77.7740],[20.9360,77.7780],[20.9320,77.7740]]},
+  // JALGAON
+  {id:'ajanta',     city:'Jalgaon', name:'Ajanta Caves Trail', coords:[[20.5519,75.7000],[20.5559,75.7040],[20.5539,75.7080],[20.5499,75.7040]]},
+];
+
+// km tracker per zone
+ZONES_DEF.forEach(z=>{z.km={you:0};});
+
+const CITIES=['All','Mumbai','Pune','Nashik','Nagpur','Aurangabad','Kolhapur','Solapur','Satara','Sangli','Nanded','Amravati','Jalgaon'];
+let activeCityFilter='All';
+
+// ── TRACKS ─────────────────────────────────────────────
+const TRACKS=[
+  // MUMBAI
+  {id:'mum3k',city:'Mumbai',name:'Marine Drive Mini Loop',dist:'3K',km:3,desc:'Quick seafront run along the Queen's Necklace',difficulty:'easy',tags:['Flat','Iconic','Beginner'],start:[18.9450,72.8230],waypoints:[[18.9450,72.8230],[18.9470,72.8240],[18.9490,72.8225],[18.9480,72.8205],[18.9460,72.8195],[18.9445,72.8210],[18.9450,72.8230]]},
+  {id:'mum5k',city:'Mumbai',name:'Bandra Sea Face Run',dist:'5K',km:5,desc:'Bandra promenade loop with sea views',difficulty:'easy',tags:['Sea Face','Scenic','Beginner'],start:[19.0440,72.8190],waypoints:[[19.0440,72.8190],[19.0460,72.8215],[19.0490,72.8240],[19.0510,72.8260],[19.0490,72.8280],[19.0460,72.8260],[19.0430,72.8235],[19.0415,72.8205],[19.0440,72.8190]]},
+  {id:'mum10k',city:'Mumbai',name:'Juhu to Bandra Coastal',dist:'10K',km:10,desc:'Full coastal run from Juhu Beach to Bandra',difficulty:'medium',tags:['Coastal','Long','Intermediate'],start:[19.0960,72.8270],waypoints:[[19.0960,72.8270],[19.0920,72.8260],[19.0880,72.8250],[19.0820,72.8240],[19.0760,72.8230],[19.0700,72.8220],[19.0640,72.8210],[19.0580,72.8200],[19.0520,72.8200],[19.0460,72.8195],[19.0440,72.8190]]},
+  // PUNE
+  {id:'pun3k',city:'Pune',name:'Koregaon Park Loop',dist:'3K',km:3,desc:'Shady morning run through KP lanes',difficulty:'easy',tags:['Flat','Leafy','Beginner'],start:[18.5360,73.8930],waypoints:[[18.5360,73.8930],[18.5385,73.8955],[18.5405,73.8985],[18.5385,73.9010],[18.5355,73.8995],[18.5335,73.8965],[18.5350,73.8940],[18.5360,73.8930]]},
+  {id:'pun5k',city:'Pune',name:'Shivajinagar to Deccan',dist:'5K',km:5,desc:'City centre run past gardens and landmarks',difficulty:'easy',tags:['City','Flat','Beginner'],start:[18.5320,73.8480],waypoints:[[18.5320,73.8480],[18.5340,73.8510],[18.5360,73.8545],[18.5345,73.8580],[18.5320,73.8600],[18.5295,73.8575],[18.5280,73.8540],[18.5300,73.8505],[18.5320,73.8480]]},
+  {id:'pun10k',city:'Pune',name:'Mulshi Dam Trail',dist:'10K',km:10,desc:'Epic Western Ghats trail run to Mulshi Dam',difficulty:'hard',tags:['Trail','Ghats','Advanced'],start:[18.5100,73.5200],waypoints:[[18.5100,73.5200],[18.5130,73.5255],[18.5165,73.5310],[18.5145,73.5370],[18.5115,73.5410],[18.5080,73.5370],[18.5055,73.5305],[18.5080,73.5245],[18.5100,73.5200]]},
+  // NASHIK
+  {id:'nas3k',city:'Nashik',name:'Godavari Ghat Stroll',dist:'3K',km:3,desc:'Short spiritual run along the Godavari bank',difficulty:'easy',tags:['River','Flat','Beginner'],start:[20.0010,73.7830],waypoints:[[20.0010,73.7830],[20.0035,73.7855],[20.0060,73.7875],[20.0080,73.7855],[20.0060,73.7825],[20.0030,73.7810],[20.0010,73.7830]]},
+  {id:'nas5k',city:'Nashik',name:'Panchvati Heritage Run',dist:'5K',km:5,desc:'Run through Panchvati past ancient temples',difficulty:'easy',tags:['Heritage','Flat','Beginner'],start:[20.0060,73.7780],waypoints:[[20.0060,73.7780],[20.0090,73.7810],[20.0120,73.7840],[20.0100,73.7875],[20.0070,73.7895],[20.0040,73.7870],[20.0020,73.7835],[20.0040,73.7800],[20.0060,73.7780]]},
+  {id:'nas10k',city:'Nashik',name:'Nashik City Grand Loop',dist:'10K',km:10,desc:'Full city run from Godavari to Panchvati and back',difficulty:'medium',tags:['City','Long','Intermediate'],start:[20.0010,73.7830],waypoints:[[20.0010,73.7830],[20.0050,73.7860],[20.0090,73.7890],[20.0130,73.7870],[20.0150,73.7830],[20.0130,73.7790],[20.0090,73.7760],[20.0050,73.7740],[20.0010,73.7760],[19.9980,73.7800],[20.0010,73.7830]]},
+  // NAGPUR
+  {id:'nag3k',city:'Nagpur',name:'Ambazari Lake Loop',dist:'3K',km:3,desc:'Peaceful loop around Ambazari Lake',difficulty:'easy',tags:['Lake','Flat','Beginner'],start:[21.1280,79.0380],waypoints:[[21.1280,79.0380],[21.1310,79.0408],[21.1338,79.0438],[21.1318,79.0468],[21.1288,79.0448],[21.1260,79.0418],[21.1280,79.0380]]},
+  {id:'nag5k',city:'Nagpur',name:'Sitabuldi to Seminary Hills',dist:'5K',km:5,desc:'Run from Sitabuldi Fort to the green Seminary Hills',difficulty:'medium',tags:['Hills','Scenic','Intermediate'],start:[21.1450,79.0820],waypoints:[[21.1450,79.0820],[21.1480,79.0855],[21.1510,79.0885],[21.1490,79.0920],[21.1460,79.0940],[21.1430,79.0910],[21.1410,79.0875],[21.1430,79.0845],[21.1450,79.0820]]},
+  {id:'nag10k',city:'Nagpur',name:'Nagpur Heritage Grand Run',dist:'10K',km:10,desc:'Full city loop — lake, fort, hills and back',difficulty:'medium',tags:['City','Long','Intermediate'],start:[21.1280,79.0380],waypoints:[[21.1280,79.0380],[21.1320,79.0420],[21.1370,79.0480],[21.1420,79.0560],[21.1460,79.0640],[21.1490,79.0740],[21.1470,79.0840],[21.1440,79.0900],[21.1390,79.0870],[21.1340,79.0820],[21.1300,79.0760],[21.1280,79.0680],[21.1280,79.0380]]},
+  // AURANGABAD
+  {id:'aur3k',city:'Aurangabad',name:'Bibi Ka Maqbara Mini',dist:'3K',km:3,desc:'Run around the stunning Bibi Ka Maqbara',difficulty:'easy',tags:['Heritage','Flat','Beginner'],start:[19.9010,75.3190],waypoints:[[19.9010,75.3190],[19.9040,75.3220],[19.9065,75.3245],[19.9045,75.3270],[19.9015,75.3255],[18.9990,75.3225],[19.9010,75.3190]]},
+  {id:'aur5k',city:'Aurangabad',name:'Aurangabad Fort Circuit',dist:'5K',km:5,desc:'Historic run around the Aurangabad fort walls',difficulty:'medium',tags:['Heritage','Hills','Intermediate'],start:[19.8762,75.3433],waypoints:[[19.8762,75.3433],[19.8800,75.3470],[19.8840,75.3510],[19.8820,75.3550],[19.8785,75.3570],[19.8750,75.3545],[19.8725,75.3505],[19.8740,75.3465],[19.8762,75.3433]]},
+  {id:'aur10k',city:'Aurangabad',name:'Daulatabad to Maqbara Trail',dist:'10K',km:10,desc:'Epic run from Daulatabad Fort to Bibi Ka Maqbara',difficulty:'hard',tags:['Heritage','Long','Advanced'],start:[19.9430,75.2170],waypoints:[[19.9430,75.2170],[19.9390,75.2280],[19.9340,75.2420],[19.9280,75.2580],[19.9220,75.2740],[19.9160,75.2880],[19.9100,75.3010],[19.9060,75.3100],[19.9030,75.3190]]},
+  // KOLHAPUR
+  {id:'kol3k',city:'Kolhapur',name:'Rankala Lake Loop',dist:'3K',km:3,desc:'Scenic loop around Rankala Lake',difficulty:'easy',tags:['Lake','Flat','Beginner'],start:[16.7000,74.2290],waypoints:[[16.7000,74.2290],[16.7030,74.2270],[16.7060,74.2305],[16.7055,74.2370],[16.7010,74.2390],[16.6968,74.2340],[16.7000,74.2290]]},
+  {id:'kol5k',city:'Kolhapur',name:'Tarabai Park Circuit',dist:'5K',km:5,desc:'Through Tarabai Park via Rajaram Road',difficulty:'medium',tags:['Park','Hills','Intermediate'],start:[16.7080,74.2360],waypoints:[[16.7080,74.2360],[16.7110,74.2390],[16.7145,74.2425],[16.7160,74.2455],[16.7140,74.2495],[16.7110,74.2515],[16.7080,74.2485],[16.7050,74.2450],[16.7030,74.2420],[16.7050,74.2390],[16.7080,74.2360]]},
+  {id:'kol10k',city:'Kolhapur',name:'Kolhapur Grand Tour',dist:'10K',km:10,desc:'Rankala to Mahalaxmi to Tarabai — the full city',difficulty:'hard',tags:['City','Long','Advanced'],start:[16.7000,74.2290],waypoints:[[16.7000,74.2290],[16.7030,74.2270],[16.7060,74.2310],[16.7070,74.2385],[16.7085,74.2425],[16.7070,74.2462],[16.7092,74.2462],[16.7122,74.2422],[16.7152,74.2412],[16.7130,74.2368],[16.7098,74.2342],[16.7058,74.2342],[16.7040,74.2382],[16.6995,74.2462],[16.6968,74.2392],[16.6968,74.2342],[16.6992,74.2300],[16.7000,74.2290]]},
+  // SOLAPUR
+  {id:'sol3k',city:'Solapur',name:'Siddheshwar Lake Loop',dist:'3K',km:3,desc:'Morning run around the serene Siddheshwar Lake',difficulty:'easy',tags:['Lake','Flat','Beginner'],start:[17.6870,75.9060],waypoints:[[17.6870,75.9060],[17.6900,75.9090],[17.6925,75.9118],[17.6905,75.9145],[17.6872,75.9130],[17.6848,75.9100],[17.6870,75.9060]]},
+  {id:'sol5k',city:'Solapur',name:'Solapur Fort Road Run',dist:'5K',km:5,desc:'Run around Solapur Fort and the old city lanes',difficulty:'medium',tags:['Heritage','City','Intermediate'],start:[17.6950,75.9100],waypoints:[[17.6950,75.9100],[17.6985,75.9130],[17.7010,75.9165],[17.6990,75.9200],[17.6955,75.9220],[17.6925,75.9195],[17.6905,75.9160],[17.6920,75.9125],[17.6950,75.9100]]},
+  {id:'sol10k',city:'Solapur',name:'Solapur City Grand Loop',dist:'10K',km:10,desc:'Full city loop from the lake to the fort and back',difficulty:'medium',tags:['City','Long','Intermediate'],start:[17.6870,75.9060],waypoints:[[17.6870,75.9060],[17.6910,75.9095],[17.6950,75.9130],[17.6990,75.9170],[17.7020,75.9215],[17.6995,75.9260],[17.6955,75.9285],[17.6910,75.9270],[17.6875,75.9235],[17.6845,75.9195],[17.6830,75.9150],[17.6845,75.9105],[17.6870,75.9060]]},
+  // SATARA
+  {id:'sat3k',city:'Satara',name:'Satara City Morning Run',dist:'3K',km:3,desc:'Easy run through Satara city roads',difficulty:'easy',tags:['City','Flat','Beginner'],start:[17.6805,74.0183],waypoints:[[17.6805,74.0183],[17.6835,74.0215],[17.6860,74.0245],[17.6840,74.0275],[17.6808,74.0258],[17.6782,74.0225],[17.6805,74.0183]]},
+  {id:'sat5k',city:'Satara',name:'Ajinkyatara Fort Climb',dist:'5K',km:5,desc:'Challenging hillside run up to Ajinkyatara Fort',difficulty:'hard',tags:['Fort','Hills','Advanced'],start:[17.6900,74.0250],waypoints:[[17.6900,74.0250],[17.6925,74.0280],[17.6950,74.0315],[17.6970,74.0355],[17.6955,74.0395],[17.6920,74.0410],[17.6890,74.0385],[17.6870,74.0345],[17.6885,74.0300],[17.6900,74.0250]]},
+  {id:'sat10k',city:'Satara',name:'Kas Plateau Trail',dist:'10K',km:10,desc:'UNESCO Heritage plateau — wildflowers and Ghats views',difficulty:'hard',tags:['Trail','UNESCO','Advanced'],start:[17.7190,73.8140],waypoints:[[17.7190,73.8140],[17.7225,73.8182],[17.7258,73.8225],[17.7238,73.8275],[17.7205,73.8308],[17.7168,73.8275],[17.7148,73.8225],[17.7175,73.8182],[17.7190,73.8140]]},
+  // SANGLI
+  {id:'san3k',city:'Sangli',name:'Sangli Riverfront Run',dist:'3K',km:3,desc:'Short run along the Krishna river bank',difficulty:'easy',tags:['River','Flat','Beginner'],start:[16.8560,74.5690],waypoints:[[16.8560,74.5690],[16.8592,74.5722],[16.8618,74.5755],[16.8598,74.5785],[16.8565,74.5768],[16.8540,74.5735],[16.8560,74.5690]]},
+  {id:'san5k',city:'Sangli',name:'Sangli Fort Loop',dist:'5K',km:5,desc:'Run around Sangli Fort and the old city',difficulty:'medium',tags:['Heritage','City','Intermediate'],start:[16.8620,74.5750],waypoints:[[16.8620,74.5750],[16.8655,74.5785],[16.8680,74.5820],[16.8660,74.5858],[16.8628,74.5875],[16.8598,74.5850],[16.8578,74.5812],[16.8595,74.5775],[16.8620,74.5750]]},
+  {id:'san10k',city:'Sangli',name:'Sangli District Grand Run',dist:'10K',km:10,desc:'Full loop across Sangli city and river roads',difficulty:'medium',tags:['City','Long','Intermediate'],start:[16.8560,74.5690],waypoints:[[16.8560,74.5690],[16.8600,74.5730],[16.8645,74.5775],[16.8682,74.5825],[16.8712,74.5880],[16.8690,74.5935],[16.8652,74.5962],[16.8610,74.5945],[16.8575,74.5908],[16.8548,74.5862],[16.8530,74.5808],[16.8545,74.5748],[16.8560,74.5690]]},
+  // NANDED
+  {id:'nan3k',city:'Nanded',name:'Hazur Sahib Morning Run',dist:'3K',km:3,desc:'Peaceful run near the sacred Hazur Sahib Gurudwara',difficulty:'easy',tags:['Spiritual','Flat','Beginner'],start:[19.1530,77.3180],waypoints:[[19.1530,77.3180],[19.1562,77.3212],[19.1588,77.3245],[19.1568,77.3275],[19.1535,77.3258],[19.1508,77.3225],[19.1530,77.3180]]},
+  {id:'nan5k',city:'Nanded',name:'Godavari Bank Circuit',dist:'5K',km:5,desc:'Run along the Godavari riverbank through Nanded',difficulty:'easy',tags:['River','Scenic','Beginner'],start:[19.1480,77.3150],waypoints:[[19.1480,77.3150],[19.1510,77.3185],[19.1545,77.3225],[19.1575,77.3262],[19.1555,77.3300],[19.1520,77.3318],[19.1488,77.3295],[19.1465,77.3258],[19.1480,77.3150]]},
+  {id:'nan10k',city:'Nanded',name:'Nanded City Heritage Loop',dist:'10K',km:10,desc:'Full city run past the gurudwara, river and fort',difficulty:'medium',tags:['City','Heritage','Intermediate'],start:[19.1530,77.3180],waypoints:[[19.1530,77.3180],[19.1578,77.3228],[19.1625,77.3275],[19.1658,77.3328],[19.1638,77.3382],[19.1598,77.3410],[19.1555,77.3392],[19.1515,77.3362],[19.1488,77.3318],[19.1468,77.3268],[19.1488,77.3215],[19.1512,77.3195],[19.1530,77.3180]]},
+  // AMRAVATI
+  {id:'amr3k',city:'Amravati',name:'Ambadevi Temple Loop',dist:'3K',km:3,desc:'Morning run around the Ambadevi Temple area',difficulty:'easy',tags:['Temple','Flat','Beginner'],start:[20.9340,77.7700],waypoints:[[20.9340,77.7700],[20.9372,77.7732],[20.9398,77.7765],[20.9378,77.7795],[20.9345,77.7778],[20.9318,77.7745],[20.9340,77.7700]]},
+  {id:'amr5k',city:'Amravati',name:'Amravati City Circuit',dist:'5K',km:5,desc:'Run through Amravati city centre and gardens',difficulty:'easy',tags:['City','Flat','Beginner'],start:[20.9374,77.7796],waypoints:[[20.9374,77.7796],[20.9410,77.7832],[20.9445,77.7868],[20.9425,77.7908],[20.9388,77.7928],[20.9352,77.7905],[20.9328,77.7865],[20.9348,77.7828],[20.9374,77.7796]]},
+  {id:'amr10k',city:'Amravati',name:'Amravati Lakes Grand Run',dist:'10K',km:10,desc:'Long run connecting the lakes and heritage zones of Amravati',difficulty:'medium',tags:['Lakes','Long','Intermediate'],start:[20.9340,77.7700],waypoints:[[20.9340,77.7700],[20.9385,77.7748],[20.9432,77.7798],[20.9472,77.7852],[20.9505,77.7910],[20.9482,77.7968],[20.9442,77.7998],[20.9398,77.7978],[20.9358,77.7945],[20.9325,77.7905],[20.9308,77.7855],[20.9322,77.7778],[20.9340,77.7700]]},
+  // JALGAON
+  {id:'jal3k',city:'Jalgaon',name:'Jalgaon City Morning Run',dist:'3K',km:3,desc:'Quick city run through central Jalgaon',difficulty:'easy',tags:['City','Flat','Beginner'],start:[21.0077,75.5626],waypoints:[[21.0077,75.5626],[21.0108,75.5658],[21.0135,75.5692],[21.0115,75.5722],[21.0082,75.5705],[21.0055,75.5672],[21.0077,75.5626]]},
+  {id:'jal5k',city:'Jalgaon',name:'Tapi Riverfront Run',dist:'5K',km:5,desc:'Run along the Tapi riverbank through Jalgaon',difficulty:'easy',tags:['River','Scenic','Beginner'],start:[21.0050,75.5580],waypoints:[[21.0050,75.5580],[21.0082,75.5618],[21.0118,75.5658],[21.0150,75.5700],[21.0130,75.5742],[21.0095,75.5762],[21.0062,75.5738],[21.0038,75.5698],[21.0050,75.5580]]},
+  {id:'jal10k',city:'Jalgaon',name:'Ajanta Caves Trail',dist:'10K',km:10,desc:'Ancient Buddhist trail run through the Ajanta hills',difficulty:'hard',tags:['Trail','Historic','Advanced'],start:[20.5519,75.7000],waypoints:[[20.5519,75.7000],[20.5552,75.7042],[20.5585,75.7085],[20.5562,75.7132],[20.5530,75.7165],[20.5498,75.7132],[20.5475,75.7085],[20.5519,75.7000]]},
+];
+
+let selectedTrack=TRACKS[0];
+let mapInitialized=false;
+let map,youMarker,yourLine,trackLine;
+const yourPath=[];
+const zonePolygons={};
+let myRooms=[];
+const PLAYERS={you:{name:'You',color:'#ff4d00',km:0,zones:0}};
+
+async function initApp(){
+  const user=window._currentUser;
+  if(user){
+    const ini=(user.displayName||user.email||'?')[0].toUpperCase();
+    ['userAvatar','drawerAvatar'].forEach(id=>document.getElementById(id).textContent=ini);
+    document.getElementById('drawerName').textContent=user.displayName||user.email;
+    document.getElementById('userNameDisplay').textContent=user.displayName||user.email;
+    PLAYERS.you.name=user.displayName||'You';
+    // Load user's rooms from Firebase
+    try{
+      const loaded = await window.fbLoadUserRooms(user.uid);
+      myRooms = loaded;
+      renderRooms();
+    }catch(e){console.log('Room load error:',e);}
+  }
+  if(!mapInitialized){mapInitialized=true;setTimeout(initMap,100);}
+  buildCityFilter();
+  buildTrackCityFilter();
+  renderTracks();
+  updateUI();
+  showToast('👋 Welcome, '+(user?.displayName||'Runner')+'! Maharashtra awaits 🗺');
+}
+
+// ── MAP INIT ───────────────────────────────────────────
+function initMap(){
+  // Centre on Maharashtra
+  map=L.map('map',{zoomControl:false}).setView([19.2,75.5],7);
+
+  // Custom dark tile — Stadia Alidade Smooth Dark
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',{
+    attribution:'© Stadia Maps © OpenMapTiles © OpenStreetMap',
+    maxZoom:20
+  }).addTo(map);
+
+  L.control.zoom({position:'topleft'}).addTo(map);
+
+  // You marker
+  const youIcon=L.divIcon({html:`<div style="width:16px;height:16px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 16px rgba(255,77,0,1),0 0 30px rgba(255,77,0,0.5)"></div>`,className:'',iconAnchor:[8,8]});
+  youMarker=L.marker([19.2,75.5],{icon:youIcon}).addTo(map);
+  yourLine=L.polyline([],{color:'#ff4d00',weight:4,opacity:0.95}).addTo(map);
+  trackLine=L.polyline([],{color:'#00c8ff',weight:3,opacity:0.75,dashArray:'9,6'}).addTo(map);
+
+  // City label markers
+  const cityCoords={
+    Mumbai:[19.0760,72.8777],Pune:[18.5204,73.8567],Nashik:[19.9975,73.7898],
+    Nagpur:[21.1458,79.0882],Aurangabad:[19.8762,75.3433],Kolhapur:[16.7050,74.2433],
+    Solapur:[17.6868,75.9064],Satara:[17.6805,74.0183],Sangli:[16.8524,74.5815],
+    Nanded:[19.1383,77.3210],Amravati:[20.9374,77.7796],Jalgaon:[21.0077,75.5626]
+  };
+  Object.entries(cityCoords).forEach(([city,[lat,lng]])=>{
+    L.marker([lat,lng],{icon:L.divIcon({
+      html:`<div style="background:rgba(255,77,0,0.85);color:white;font-family:'Bebas Neue',sans-serif;font-size:10px;padding:2px 7px;border-radius:10px;letter-spacing:1.5px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.5)">${city.toUpperCase()}</div>`,
+      className:'',iconAnchor:[20,10]
+    })}).addTo(map);
+  });
+
+  drawZones();
+}
+
+// ── CITY FILTER ────────────────────────────────────────
+function buildCityFilter(){
+  document.getElementById('cityFilter').innerHTML=CITIES.map(c=>
+    `<div class="city-pill ${c===activeCityFilter?'active':''}" onclick="filterCity('${c}')">${c==='All'?'🗺 All':c}</div>`
+  ).join('');
+}
+function filterCity(city){
+  activeCityFilter=city;
+  buildCityFilter();
+  if(!map)return;
+  const cityCoords={
+    Mumbai:[19.0760,72.8777,12],Pune:[18.5204,73.8567,12],Nashik:[19.9975,73.7898,13],
+    Nagpur:[21.1458,79.0882,13],Aurangabad:[19.8762,75.3433,13],Kolhapur:[16.7050,74.2433,13],
+    Solapur:[17.6868,75.9064,13],Satara:[17.6805,74.0183,13],Sangli:[16.8524,74.5815,13],
+    Nanded:[19.1383,77.3210,13],Amravati:[20.9374,77.7796,13],Jalgaon:[21.0077,75.5626,13]
+  };
+  if(city==='All'){map.setView([19.2,75.5],7);}
+  else if(cityCoords[city]){const[lat,lng,z]=cityCoords[city];map.setView([lat,lng],z);}
+  drawZones();
+}
+
+// ── ZONES ──────────────────────────────────────────────
+function getOwner(zone){
+  let best=null,bestKm=0;
+  for(const[pid,km] of Object.entries(zone.km)){if(km>bestKm){bestKm=km;best=pid;}}
+  return best&&bestKm>0?best:null;
+}
+function drawZones(){
+  if(!map)return;
+  ZONES_DEF.forEach(z=>{
+    if(zonePolygons[z.id])map.removeLayer(zonePolygons[z.id]);
+    if(activeCityFilter!=='All'&&z.city!==activeCityFilter)return;
+    const owner=getOwner(z);
+    const color=owner?(PLAYERS[owner]?.color||'#ff4d00'):'#3355aa';
+    const total=Object.values(z.km).reduce((a,b)=>a+b,0);
+    const opacity=owner?0.38+Math.min(total/10,0.32):0.18;
+    const poly=L.polygon(z.coords,{
+      color,fillColor:color,weight:owner?2.5:1.5,
+      fillOpacity:opacity,opacity:0.95,
+      dashArray:owner?null:'4,4'
+    }).addTo(map);
+    poly.bindTooltip(`<b>${z.name}</b><br><span style="color:#aaa;font-size:11px">${z.city}</span><br>${owner?PLAYERS[owner]?.name||owner:'Unclaimed'}`,{sticky:true});
+    zonePolygons[z.id]=poly;
+  });
+}
+
+// ── TRACKS ─────────────────────────────────────────────
+const TRACK_CITIES=['All','Mumbai','Pune','Nashik','Nagpur','Aurangabad','Kolhapur','Solapur','Satara','Sangli','Nanded','Amravati','Jalgaon'];
+let activeTrackCity='All';
+
+function buildTrackCityFilter(){
+  document.getElementById('trackCityFilter').innerHTML=TRACK_CITIES.map(c=>
+    `<div class="city-pill ${c===activeTrackCity?'active':''}" onclick="filterTrackCity('${c}')" style="flex-shrink:0">${c==='All'?'All Cities':c}</div>`
+  ).join('');
+}
+function filterTrackCity(city){activeTrackCity=city;buildTrackCityFilter();renderTracks();}
+
+function renderTracks(){
+  buildTrackCityFilter();
+  const filtered=activeTrackCity==='All'?TRACKS:TRACKS.filter(t=>t.city===activeTrackCity);
+  // group by city
+  const cities=[...new Set(filtered.map(t=>t.city))];
+  document.getElementById('trackGrid').innerHTML=cities.map(city=>{
+    const cityTracks=filtered.filter(t=>t.city===city);
+    return `<div style="margin-bottom:18px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;color:var(--accent2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">📍 ${city.toUpperCase()}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        ${cityTracks.map(t=>`
+          <div class="track-card ${t.id===selectedTrack.id?'selected':''}" onclick="selectTrack('${t.id}')" style="flex-direction:column;align-items:center;padding:12px 8px;text-align:center;gap:4px;">
+            <div class="track-dist" style="font-size:22px;">${t.dist}<br><span style="font-size:10px;">km</span></div>
+            <div style="font-size:10px;font-weight:700;color:${t.id===selectedTrack.id?'var(--accent)':'var(--text)'};">${t.name.split(' ').slice(0,3).join(' ')}</div>
+            <span class="tag ${t.difficulty}" style="font-size:9px;">${t.difficulty.toUpperCase()}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+function selectTrack(id){selectedTrack=TRACKS.find(t=>t.id===id);renderTracks();}
+function startSelectedTrack(){
+  switchTab('map');
+  setTimeout(()=>{
+    if(!map)return;
+    trackLine.setLatLngs(selectedTrack.waypoints);
+    map.fitBounds(L.polyline(selectedTrack.waypoints).getBounds(),{padding:[50,50]});
+    youMarker.setLatLng(selectedTrack.start);
+    showToast(`🏃 ${selectedTrack.name} · ${selectedTrack.city} loaded!`);
+    L.marker(selectedTrack.start,{icon:L.divIcon({html:`<div style="background:#00c8ff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:10px;padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.4)">START</div>`,className:'',iconAnchor:[22,10]})}).addTo(map);
+  },60);
+}
+
+// ── RUN ────────────────────────────────────────────────
+let running=false,watchId=null,seconds=0,timerInt=null,totalDist=0,demoInt=null,demoStep=0;
+let zonesThisRun=new Set();
+
+function toggleRun(){
+  running=!running;
+  const btn=document.getElementById('runBtn');
+  if(running){
+    btn.textContent='STOP RUN';btn.classList.add('running');
+    seconds=0;totalDist=0;yourPath.length=0;zonesThisRun.clear();
+    if(yourLine)yourLine.setLatLngs([]);
+    timerInt=setInterval(()=>{
+      seconds++;
+      document.getElementById('timer').textContent=pad(Math.floor(seconds/60))+':'+pad(seconds%60);
+    },1000);
+    if(navigator.geolocation){watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true});showToast('📍 GPS locked — go!');}
+    else{showToast('Demo mode');startDemo();}
+  } else {
+    btn.textContent='START RUN';btn.classList.remove('running');
+    clearInterval(timerInt);clearInterval(demoInt);
+    if(watchId)navigator.geolocation.clearWatch(watchId);
+    showRunSummary();
+    if(window._currentUser&&totalDist>0)window.fbSaveRun(window._currentUser.uid,totalDist,PLAYERS.you.zones).catch(()=>{});
+  }
+}
+function pad(n){return String(n).padStart(2,'0');}
+function startDemo(){
+  const pts=selectedTrack.waypoints;demoStep=0;
+  demoInt=setInterval(()=>{if(!running)return;movePlayer(pts[demoStep%pts.length]);demoStep++;},900);
+}
+function onGPS(pos){movePlayer([pos.coords.latitude,pos.coords.longitude]);}
+function onGPSErr(){showToast('GPS error — demo mode');startDemo();}
+function movePlayer(pos){
+  if(yourPath.length>0){
+    const d=distKm(yourPath[yourPath.length-1],pos);
+    totalDist+=d;PLAYERS.you.km+=d;
+    document.getElementById('distVal').textContent=totalDist.toFixed(2);
+    ZONES_DEF.forEach(z=>{if(inPoly(pos,z.coords)){z.km.you=(z.km.you||0)+d;zonesThisRun.add(z.id);}});
+    updateUI();
+  }
+  yourPath.push(pos);
+  if(yourLine)yourLine.setLatLngs(yourPath);
+  if(youMarker){youMarker.setLatLng(pos);map.panTo(pos,{animate:true,duration:0.5});}
+}
+
+// ── SUMMARY ────────────────────────────────────────────
+function showRunSummary(){
+  const m=Math.floor(seconds/60),s=seconds%60;
+  document.getElementById('sumEmoji').textContent=totalDist>=10?'🏆':totalDist>=5?'🔥':totalDist>=3?'🏅':'👟';
+  document.getElementById('sumSub').textContent=selectedTrack.name+' · '+selectedTrack.city+' · ZONR';
+  document.getElementById('sumDist').textContent=totalDist.toFixed(2);
+  document.getElementById('sumTime').textContent=pad(m)+':'+pad(s);
+  document.getElementById('sumPace').textContent=totalDist>0?fmtPace(seconds/totalDist):'—';
+  const zones=ZONES_DEF.filter(z=>zonesThisRun.has(z.id));
+  document.getElementById('sumZonesCount').textContent=zones.length;
+  const wrap=document.getElementById('sumZonesWrap');
+  wrap.innerHTML=zones.length>0?`<div class="sum-zones-title">Zones Entered</div>`+zones.map(z=>`<span class="sum-zone-pill">📍 ${z.name} <span style="color:var(--muted);font-size:9px">${z.city}</span></span>`).join(''):'';
+  spawnConfetti();
+  document.getElementById('summaryOverlay').classList.add('show');
+}
+function closeSummary(){document.getElementById('summaryOverlay').classList.remove('show');}
+function spawnConfetti(){
+  const c=document.getElementById('confettiWrap');c.innerHTML='';
+  const cols=['#ff4d00','#00c8ff','#ffd700','#b8ff00','#ff00aa','#00e87a','#ffffff'];
+  for(let i=0;i<32;i++){
+    const el=document.createElement('div');el.className='cp';
+    el.style.cssText=`left:${Math.random()*100}%;background:${cols[Math.floor(Math.random()*cols.length)]};width:${5+Math.random()*7}px;height:${5+Math.random()*7}px;border-radius:${Math.random()>0.5?'50%':'2px'};animation-duration:${1.2+Math.random()*1.8}s;animation-delay:${Math.random()*0.7}s;`;
+    c.appendChild(el);
+  }
+}
+function shareRun(){
+  const text=`🏃 Just finished a run on ZONR!\n📍 ${selectedTrack.name} · ${selectedTrack.city}, Maharashtra\n🔥 ${totalDist.toFixed(2)} km in ${document.getElementById('sumTime').textContent}\n⚡ Pace: ${document.getElementById('sumPace').textContent} /km\n\nJoin ZONR & claim Maharashtra! 👇\n${window.location.href}`;
+  if(navigator.share){navigator.share({title:'My ZONR Run',text,url:window.location.href}).catch(()=>{});}
+  else{navigator.clipboard.writeText(text).then(()=>showToast('📋 Copied to clipboard!')).catch(()=>showToast('Copy the URL and share!'));}
+}
+function fmtPace(s){const m=Math.floor(s/60),sc=Math.round(s%60);return m+':'+(sc<10?'0':'')+sc;}
+
+// ── RACE WEEK ──────────────────────────────────────────
+function openCreateRoom(){document.getElementById('createModal').classList.add('show');document.getElementById('createErr').textContent='';}
+function closeCreateRoom(){document.getElementById('createModal').classList.remove('show');}
+function openJoinRoom(){document.getElementById('joinModal').classList.add('show');document.getElementById('joinErr').textContent='';document.getElementById('joinCode').value='';}
+function closeJoinRoom(){document.getElementById('joinModal').classList.remove('show');}
+async function doCreateRoom(){
+  const btn=document.querySelector('#createModal .modal-btn.confirm');
+  btn.textContent='CREATING...';btn.disabled=true;
+  try{
+    const name=window._currentUser?.displayName||'Runner';
+    const size=parseInt(document.getElementById('roomSize').value);
+    const code=await window.fbCreateRoom(name,size);
+    closeCreateRoom();
+    // Reload from Firebase to get fresh data
+    const loaded=await window.fbLoadUserRooms(window._currentUser.uid);
+    myRooms=loaded;
+    renderRooms();
+    showToast(`✅ Room ${code} created! Share the code 🔥`);
+  }catch(e){document.getElementById('createErr').textContent=e.message;}
+  finally{btn.textContent='CREATE →';btn.disabled=false;}
+}
+async function doJoinRoom(){
+  const code=document.getElementById('joinCode').value.trim().toUpperCase();
+  if(!code){document.getElementById('joinErr').textContent='Enter a room code';return;}
+  const btn=document.querySelector('#joinModal .modal-btn.confirm');
+  btn.textContent='JOINING...';btn.disabled=true;
+  try{
+    await window.fbJoinRoom(code);
+    closeJoinRoom();
+    // Reload all rooms from Firebase
+    const loaded=await window.fbLoadUserRooms(window._currentUser.uid);
+    myRooms=loaded;
+    renderRooms();
+    showToast(`✅ Joined room ${code}!`);
+  }catch(e){document.getElementById('joinErr').textContent=e.message;}
+  finally{btn.textContent='JOIN →';btn.disabled=false;}
+}
+function renderRooms(){
+  if(!myRooms.length){document.getElementById('roomsList').innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px;line-height:1.8;">No rooms yet.<br>Create one and share it with friends! 🔥</div>';return;}
+  const sc={waiting:'waiting',active:'active',ended:'ended'};
+  const sl={waiting:'WAITING FOR PLAYERS',active:'RACE ACTIVE 🔥',ended:'ENDED'};
+  const pc=['#ff4d00','#00c8ff','#b8ff00','#ff00aa','#ffd700','#00e87a','#ff8800','#aa00ff','#00ffaa','#ff0055'];
+  document.getElementById('roomsList').innerHTML=myRooms.map(r=>{
+    const left=r.maxPlayers-(r.players||[]).length;
+    const endsIn=r.endsAt?Math.max(0,Math.ceil((r.endsAt-Date.now())/(86400000))):null;
+    return `<div class="room-card">
+      <div class="room-code">${r.code}</div>
+      <div class="room-status-row"><span class="room-badge ${sc[r.status]||'waiting'}">${sl[r.status]||r.status}</span>${left>0&&r.status==='waiting'?`<span style="font-size:10px;color:var(--muted)">${left} spot${left!==1?'s':''} left</span>`:''}</div>
+      <div class="room-players">${(r.players||[]).map((p,i)=>`<div class="room-player"><div class="room-player-dot" style="background:${pc[i%pc.length]}"></div><div class="room-player-name">${p.name}</div><div class="room-player-stat">${(p.km||0).toFixed(1)}km · ${p.zones||0} zones</div></div>`).join('')}</div>
+      ${endsIn!==null?`<div class="race-countdown">⏳ ${endsIn} day${endsIn!==1?'s':''} remaining</div>`:''}
+      <button class="room-share-btn" onclick="shareRoom('${r.code}')">📤 Share Room Link</button>
+    </div>`;
+  }).join('');
+}
+function shareRoom(code){
+  const url=`${window.location.href.split('?')[0]}?room=${code}`;
+  const text=`🔥 Join my ZONR Race Week!\nRoom: ${code}\nRun Maharashtra, claim zones, win the week!\n\n👇 Join here\n${url}`;
+  if(navigator.share){navigator.share({title:'Join my ZONR Race!',text,url}).catch(()=>{});}
+  else{navigator.clipboard.writeText(text).then(()=>showToast('📋 Room link copied!')).catch(()=>showToast('Code: '+code));}
+}
+
+// ── UI UPDATE ──────────────────────────────────────────
+function updateUI(){
+  drawZones();
+  PLAYERS.you.zones=0;
+  ZONES_DEF.forEach(z=>{if(getOwner(z)==='you')PLAYERS.you.zones++;});
+  document.getElementById('zonesWon').textContent=PLAYERS.you.zones;
+  document.getElementById('lbList').innerHTML=`
+    <div class="player-card you">
+      <div class="rank gold">1</div>
+      <div class="pdot" style="background:#ff4d00"></div>
+      <div style="flex:1"><div class="pname">${PLAYERS.you.name} 👤</div><div class="pzones">${PLAYERS.you.zones} zone${PLAYERS.you.zones!==1?'s':''} across Maharashtra</div></div>
+      <div class="pkm">${PLAYERS.you.km.toFixed(1)}<span>km</span></div>
+    </div>
+    <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;">Invite friends via 🔥 Race Week<br>to see them compete here!</div>`;
+  document.getElementById('zonesList').innerHTML=ZONES_DEF.map(z=>{
+    const owner=getOwner(z);
+    const oc=owner?(PLAYERS[owner]?.color||'#ff4d00'):'#3355aa';
+    const total=Object.values(z.km).reduce((a,b)=>a+b,0);
+    const youPct=total>0?(z.km.you||0)/total*100:0;
+    return `<div class="zone-card" onclick="flyTo('${z.id}')">
+      <div class="zone-name">${z.name}</div>
+      <div class="zone-city">📍 ${z.city}</div>
+      <div class="zone-owner"><div class="zodot" style="background:${oc}"></div>${owner?(PLAYERS[owner]?.name||owner):'Unclaimed'}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">Your km: ${(z.km.you||0).toFixed(2)}</div>
+      <div class="zone-bar-wrap"><div class="zone-bar" style="width:${youPct}%;background:#ff4d00"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── TABS ───────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  ['map','tracks','leaderboard','zones','race'].forEach(n=>{
+    const el=document.getElementById('ditem-'+n);
+    if(el)el.classList.toggle('active',n===name);
+  });
+  if(name==='map'&&map)setTimeout(()=>map.invalidateSize(),50);
+  if(name==='race'){
+    renderRooms();
+    // Refresh rooms from Firebase every time race tab is opened
+    if(window._currentUser){
+      window.fbLoadUserRooms(window._currentUser.uid).then(loaded=>{
+        myRooms=loaded;renderRooms();
+      }).catch(()=>{});
+    }
+  }
+}
+function flyTo(id){
+  const z=ZONES_DEF.find(z=>z.id===id);if(!z)return;
+  switchTab('map');
+  activeCityFilter=z.city;buildCityFilter();
+  setTimeout(()=>{map.fitBounds(L.polygon(z.coords).getBounds(),{padding:[60,60]});drawZones();},60);
+}
+
+// ── UTILS ──────────────────────────────────────────────
+function distKm(a,b){
+  const R=6371,dLat=(b[0]-a[0])*Math.PI/180,dLng=(b[1]-a[1])*Math.PI/180;
+  const s=Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function inPoly(pt,poly){
+  const[lat,lng]=pt;let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const[yi,xi]=poly[i],[yj,xj]=poly[j];
+    if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+let toastTO;
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTO);toastTO=setTimeout(()=>t.classList.remove('show'),3200);
+}
+</script>
+</body>
+</html>
