@@ -1,0 +1,48 @@
+{
+  "name": "ZONR — Claim Maharashtra",
+  "short_name": "ZONR",
+  "description": "Run Maharashtra. Claim your territory. Compete with friends.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#ff4d00",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["sports", "fitness", "games"],
+  "shortcuts": [
+    {
+      "name": "Start Run",
+      "short_name": "Run",
+      "description": "Start a new run",
+      "url": "/?tab=run",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Race Week",
+      "short_name": "Race",
+      "description": "Join or create a race",
+      "url": "/?tab=race",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
