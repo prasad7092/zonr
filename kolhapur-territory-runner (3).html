@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ZONR — Maharashtra</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff4d00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ZONR">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="description" content="Run Maharashtra. Claim your territory. Compete with friends.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+:root{--bg:#0a0a0f;--panel:#11111a;--panel2:#181824;--border:#1e1e2e;--accent:#ff4d00;--accent2:#00c8ff;--green:#00e87a;--gold:#ffd700;--text:#eeeef5;--muted:#55557a;--r:12px;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;height:100vh;overflow:hidden;}
+
+/* SPLASH SCREEN */
+#splash{position:fixed;inset:0;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.6s ease,transform 0.6s ease;}
+#splash.hide{opacity:0;transform:scale(1.05);pointer-events:none;}
+.splash-logo{font-family:'Bebas Neue',sans-serif;font-size:72px;letter-spacing:12px;color:var(--accent);line-height:1;animation:splashPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.3s both;}
+.splash-logo span{color:var(--text);}
+.splash-sub{font-size:12px;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-top:8px;animation:fadeUp 0.5s ease 0.8s both;}
+.splash-tagline{font-size:14px;color:var(--text);letter-spacing:2px;margin-top:16px;animation:fadeUp 0.5s ease 1s both;opacity:0.7;}
+.splash-dots{display:flex;gap:8px;margin-top:40px;animation:fadeUp 0.5s ease 1.2s both;}
+.splash-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:dotPulse 1.2s ease infinite;}
+.splash-dot:nth-child(2){animation-delay:0.2s;background:var(--accent2);}
+.splash-dot:nth-child(3){animation-delay:0.4s;background:var(--green);}
+.splash-ring{position:absolute;width:300px;height:300px;border-radius:50%;border:1px solid rgba(255,77,0,0.15);animation:ringExpand 2s ease infinite;}
+.splash-ring:nth-child(2){animation-delay:0.5s;width:200px;height:200px;}
+@keyframes splashPop{0%{opacity:0;transform:scale(0.7) rotate(-5deg);}100%{opacity:1;transform:scale(1) rotate(0deg);}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+@keyframes dotPulse{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+@keyframes ringExpand{0%{transform:scale(0.8);opacity:0.5;}100%{transform:scale(1.4);opacity:0;}}
+
+/* AUTH */
+#authModal{position:fixed;inset:0;background:linear-gradient(135deg,#0a0a0f 60%,#1a0800);display:none;align-items:center;justify-content:center;z-index:9999;flex-direction:column;}
+#authModal.visible{display:flex;}
+.auth-brand{text-align:center;margin-bottom:24px;animation:fadeUp 0.5s ease both;}
+.auth-brand-logo{font-family:'Bebas Neue',sans-serif;font-size:54px;letter-spacing:8px;color:var(--accent);text-shadow:0 0 40px rgba(255,77,0,0.7);line-height:1;}
+.auth-brand-logo span{color:var(--text);}
+.auth-brand-sub{font-size:11px;color:var(--muted);letter-spacing:3px;margin-top:4px;}
+.auth-box{background:rgba(17,17,26,0.98);border:1px solid var(--border);border-radius:20px;padding:28px 24px;width:330px;max-width:94vw;animation:fadeUp 0.5s ease 0.1s both;}
+.auth-tabs{display:flex;margin-bottom:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:all 0.2s;}
+.auth-tab.active{background:var(--accent);color:white;}
+.afield{margin-bottom:13px;}
+.afield label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.afield input{width:100%;padding:11px 13px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border 0.2s;}
+.afield input:focus{border-color:var(--accent);}
+.abtn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;margin-top:4px;transition:all 0.2s;box-shadow:0 0 24px rgba(255,77,0,0.3);}
+.abtn:hover{background:#ff6120;}
+.abtn:disabled{opacity:0.6;cursor:default;}
+.aerr{color:#ff5555;font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+
+/* APP */
+#app{display:none;flex-direction:column;height:100vh;}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);z-index:1000;flex-shrink:0;}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 12px rgba(255,77,0,0.4);}
+.logo span{color:var(--text);}
+.city-sub{font-size:9px;color:var(--muted);letter-spacing:2px;}
+.hright{display:flex;gap:9px;align-items:center;}
+.hstat{text-align:center;}
+.hstat-val{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--accent);line-height:1;}
+.hstat-lbl{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+#timer{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--accent2);letter-spacing:2px;}
+.uchip{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:4px 10px 4px 4px;cursor:pointer;font-size:11px;font-weight:600;}
+.uav{width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:white;}
+.mbtn{width:34px;height:34px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;flex-shrink:0;transition:border 0.2s;}
+.mbtn:hover{border-color:var(--accent);}
+.mdot{width:4px;height:4px;border-radius:50%;background:var(--text);}
+
+/* DRAWER */
+.doverlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:2000;opacity:0;pointer-events:none;transition:opacity 0.28s;backdrop-filter:blur(3px);}
+.doverlay.open{opacity:1;pointer-events:all;}
+.drawer{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--panel);border-right:1px solid var(--border);z-index:2001;transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;}
+.drawer.open{transform:translateX(0);}
+.dhead{padding:18px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.dlogo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent);}
+.dlogo span{color:var(--text);}
+.dsub{font-size:9px;color:var(--muted);letter-spacing:2px;}
+.dclose{width:28px;height:28px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--muted);}
+.dnav{flex:1;padding:8px 0;overflow-y:auto;}
+.ditem{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;transition:all 0.18s;border-left:3px solid transparent;}
+.ditem:hover{background:rgba(255,77,0,0.06);border-left-color:rgba(255,77,0,0.3);}
+.ditem.active{background:rgba(255,77,0,0.1);border-left-color:var(--accent);}
+.dicon{font-size:17px;width:22px;text-align:center;}
+.dlabel{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;flex:1;}
+.dbadge{background:var(--accent);color:white;font-size:8px;font-weight:700;padding:2px 6px;border-radius:10px;}
+.ddiv{height:1px;background:var(--border);margin:6px 16px;}
+.dfoot{padding:14px 16px;border-top:1px solid var(--border);}
+.dav{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:17px;color:white;}
+.dname{font-size:13px;font-weight:700;}
+.dout{font-size:10px;color:var(--muted);cursor:pointer;margin-top:2px;}
+.dout:hover{color:var(--accent);}
+
+/* PAGES */
+.page{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.page.active{display:flex;animation:pgIn 0.25s ease both;}
+@keyframes pgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* MAP */
+#map{width:100%;flex:1;z-index:1;min-height:0;}
+.btn-ghost{padding:11px 16px;border-radius:50px;border:1px solid var(--border);background:rgba(20,20,28,0.92);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap;}
+.btn-ghost:hover{border-color:var(--accent2);color:var(--accent2);}
+
+/* RUN TAB */
+.run-minimap{width:100%;height:200px;flex-shrink:0;position:relative;z-index:1;}
+#minimap{width:100%;height:100%;}
+.run-stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 12px 0;}
+.run-stat-card{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;position:relative;overflow:hidden;transition:border 0.3s;}
+.run-stat-card.live{border-color:rgba(255,77,0,0.4);}
+.run-stat-card.live::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);animation:scanLine 1.5s linear infinite;}
+@keyframes scanLine{0%{transform:scaleX(0);transform-origin:left;}50%{transform:scaleX(1);transform-origin:left;}50.01%{transform:scaleX(1);transform-origin:right;}100%{transform:scaleX(0);transform-origin:right;}}
+.rsv{font-family:'Bebas Neue',sans-serif;font-size:38px;color:var(--accent);line-height:1;}
+.rsv.blue{color:var(--accent2);}.rsv.green{color:var(--green);}.rsv.gold{color:var(--gold);}
+.rsl{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:4px;}
+.run-zone-row{padding:8px 12px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;flex-shrink:0;}
+.run-zone-row::-webkit-scrollbar{display:none;}
+.rzpill{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,77,0,0.12);border:1px solid rgba(255,77,0,0.3);color:var(--accent);white-space:nowrap;}
+.run-btns{padding:12px;flex-shrink:0;}
+.run-start-btn{width:100%;padding:18px;border-radius:18px;border:none;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:4px;cursor:pointer;background:var(--accent);color:white;box-shadow:0 0 40px rgba(255,77,0,0.4);transition:all 0.2s;}
+.run-start-btn.running{background:#cc2200;animation:runpulse 1.8s infinite;}
+@keyframes runpulse{0%,100%{box-shadow:0 0 30px rgba(255,77,0,0.4);}50%{box-shadow:0 0 60px rgba(255,77,0,1);}}
+.run-timer-big{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);letter-spacing:2px;text-align:center;padding:6px 0 0;flex-shrink:0;}
+.run-status{font-size:10px;color:var(--muted);text-align:center;letter-spacing:2px;text-transform:uppercase;padding:3px 0;flex-shrink:0;}
+.run-speed-bar{margin:0 12px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;}
+.run-speed-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--accent2));border-radius:2px;transition:width 0.5s ease;width:0%;}
+
+/* SCROLL PAGE */
+.spage{padding:14px;overflow-y:auto;flex:1;}
+.stitle{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;}
+
+/* TRACKS */
+.cpill{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all 0.2s;flex-shrink:0;}
+.cpill.active{background:var(--accent);border-color:var(--accent);color:white;}
+.tcard{background:var(--panel2);border:1px solid var(--border);border-radius:var(--r);padding:10px 8px;cursor:pointer;transition:all 0.22s;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;}
+.tcard:hover,.tcard.selected{border-color:var(--accent);background:rgba(255,77,0,0.08);box-shadow:0 0 20px rgba(255,77,0,0.1);}
+.tdist{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);line-height:1;}
+.tdist span{font-size:10px;color:var(--muted);}
+.tname{font-size:10px;font-weight:700;color:var(--text);line-height:1.3;}
+.ttag{padding:2px 6px;border-radius:20px;font-size:9px;font-weight:600;background:var(--panel);border:1px solid var(--border);color:var(--muted);}
+.ttag.easy{border-color:#00e87a44;color:var(--green);}.ttag.medium{border-color:#ffaa0044;color:#ffaa00;}.ttag.hard{border-color:#ff4d0044;color:var(--accent);}
+.btn-start{width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;cursor:pointer;margin-top:12px;box-shadow:0 0 20px rgba(255,77,0,0.25);transition:all 0.2s;}
+.btn-start:hover{background:#ff6120;}
+
+/* PLAYER/ZONE CARDS */
+.pcard{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);margin-bottom:8px;transition:all 0.2s;}
+.pcard.you{border-color:rgba(255,77,0,0.4);background:rgba(255,77,0,0.05);}
+.prank{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--muted);width:28px;text-align:center;}
+.prank.gold{color:#ffd700;}.prank.silver{color:#c0c0c0;}.prank.bronze{color:#cd7f32;}
+.pdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.pnm{font-size:14px;font-weight:700;}
+.pzn{font-size:11px;color:var(--muted);margin-top:2px;}
+.pkm{font-family:'Bebas Neue',sans-serif;font-size:22px;}
+.pkm span{font-size:11px;color:var(--muted);}
+.zcard{padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);cursor:pointer;transition:all 0.22s;margin-bottom:6px;}
+.zcard:hover{border-color:rgba(255,77,0,0.4);transform:translateX(4px);}
+.znm{font-size:13px;font-weight:700;margin-bottom:1px;}
+.zcity{font-size:10px;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
+.zown{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;}
+.zdot{width:7px;height:7px;border-radius:50%;}
+.zbar-w{margin-top:7px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.zbar{height:100%;border-radius:2px;transition:width 0.4s;}
+
+/* RACE WEEK */
+.race-hero{background:linear-gradient(135deg,rgba(255,77,0,0.12),rgba(0,200,255,0.06));border:1px solid rgba(255,77,0,0.18);border-radius:16px;padding:18px;margin-bottom:14px;text-align:center;}
+.race-title{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent);margin-bottom:3px;}
+.race-sub{font-size:11px;color:var(--muted);line-height:1.7;}
+.race-acts{display:flex;gap:10px;margin-bottom:18px;}
+.rbtn{flex:1;padding:13px;border-radius:10px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.rbtn.pri{background:var(--accent);color:white;box-shadow:0 0 20px rgba(255,77,0,0.25);}
+.rbtn.pri:hover{background:#ff6120;}
+.rbtn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+.rbtn.sec:hover{border-color:var(--accent2);color:var(--accent2);}
+
+/* ROOM CARD */
+.rcard{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;animation:slideUp 0.3s ease both;}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.rcode{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:7px;color:var(--accent);text-align:center;margin-bottom:4px;}
+.rstatrow{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;}
+.rbadge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1px;}
+.rbadge.waiting{background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.3);color:#ffaa00;}
+.rbadge.active{background:rgba(0,232,122,0.1);border:1px solid rgba(0,232,122,0.3);color:var(--green);}
+.rbadge.ended{background:rgba(255,77,0,0.1);border:1px solid rgba(255,77,0,0.3);color:var(--accent);}
+/* room player leaderboard */
+.rplayer-row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--panel);border-radius:10px;margin-bottom:6px;border:1px solid var(--border);}
+.rplayer-rank{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--muted);width:24px;text-align:center;}
+.rplayer-rank.g{color:#ffd700;}.rplayer-rank.s{color:#c0c0c0;}.rplayer-rank.b{color:#cd7f32;}
+.rplayer-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.rplayer-name{font-size:13px;font-weight:600;flex:1;}
+.rplayer-stats{text-align:right;}
+.rplayer-zones{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--accent);line-height:1;}
+.rplayer-km{font-size:10px;color:var(--muted);}
+/* zone leaderboard inside room */
+.rzone-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--panel);border-radius:8px;margin-bottom:5px;}
+.rzone-dot{width:7px;height:7px;border-radius:50%;}
+.rzone-name{font-size:12px;font-weight:600;flex:1;}
+.rzone-owner{font-size:10px;color:var(--muted);}
+/* countdown */
+.rcountdown{background:rgba(0,200,255,0.08);border:1px solid rgba(0,200,255,0.2);border-radius:10px;padding:10px;margin-bottom:12px;text-align:center;}
+.rcountdown-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent2);letter-spacing:2px;}
+.rcountdown-lbl{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.rshare{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,200,255,0.3);background:transparent;color:var(--accent2);font-weight:600;font-size:12px;cursor:pointer;transition:all 0.2s;margin-top:8px;}
+.rshare:hover{background:rgba(0,200,255,0.06);}
+.rsec-title{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);margin:12px 0 6px;}
+.rloading{color:var(--muted);font-size:13px;text-align:center;padding:24px;line-height:1.8;}
+.rentered-btn{width:100%;padding:13px;border-radius:10px;border:none;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;cursor:pointer;background:var(--green);color:#000;margin-bottom:8px;font-weight:700;transition:all 0.2s;}
+.rentered-btn:hover{background:#00ff88;}
+.rentered-btn:disabled{background:var(--panel2);color:var(--muted);border:1px solid var(--border);cursor:default;}
+
+/* ACCOUNT */
+.acc-hero{background:linear-gradient(135deg,rgba(255,77,0,0.15),rgba(0,200,255,0.05));border-bottom:1px solid var(--border);padding:22px 16px;display:flex;flex-direction:column;align-items:center;text-align:center;flex-shrink:0;}
+.acc-avatar-big{width:70px;height:70px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:32px;color:white;margin-bottom:10px;box-shadow:0 0 30px rgba(255,77,0,0.4);position:relative;cursor:pointer;}
+.acc-edit-badge{position:absolute;bottom:0;right:0;width:22px;height:22px;border-radius:50%;background:var(--panel2);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;}
+.acc-name{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:2px;}
+.acc-email{font-size:11px;color:var(--muted);}
+.acc-stats-row{display:flex;gap:0;margin-top:14px;border:1px solid var(--border);border-radius:12px;overflow:hidden;width:100%;}
+.acc-stat{flex:1;padding:11px 8px;text-align:center;background:var(--panel2);}
+.acc-stat+.acc-stat{border-left:1px solid var(--border);}
+.acc-stat-val{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);line-height:1;}
+.acc-stat-lbl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+.acc-section{padding:12px 14px;}
+.acc-section-title{font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px;}
+.acc-item{display:flex;align-items:center;gap:12px;padding:13px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:all 0.2s;}
+.acc-item:hover{border-color:rgba(255,77,0,0.3);}
+.acc-item-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.acc-item-title{font-size:13px;font-weight:600;}
+.acc-item-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.acc-item-arrow{font-size:16px;color:var(--muted);}
+.acc-item.danger .acc-item-title{color:#ff5555;}
+.hist-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
+.hist-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,77,0,0.1);border:1px solid rgba(255,77,0,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.hist-info{flex:1;}
+.hist-name{font-size:13px;font-weight:700;margin-bottom:2px;}
+.hist-meta{font-size:10px;color:var(--muted);}
+.hist-km{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);line-height:1;}
+.hist-time{font-size:10px;color:var(--muted);}
+
+/* MODALS */
+.moverlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:5000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.22s;backdrop-filter:blur(4px);}
+.moverlay.show{opacity:1;pointer-events:all;}
+.mbox{background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:24px 20px;width:300px;max-width:92vw;transform:translateY(20px) scale(0.97);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);}
+.moverlay.show .mbox{transform:translateY(0) scale(1);}
+.mtitle{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--accent);margin-bottom:16px;}
+.mfield{margin-bottom:13px;}
+.mfield label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.mfield input,.mfield select{width:100%;padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;}
+.mfield input:focus,.mfield select:focus{border-color:var(--accent);}
+.mfield select option{background:var(--panel2);}
+.mbtns{display:flex;gap:10px;margin-top:4px;}
+.mbtn2{flex:1;padding:11px;border-radius:8px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.mbtn2.ok{background:var(--accent);color:white;}
+.mbtn2.ok:hover{background:#ff6120;}
+.mbtn2.ok:disabled{opacity:0.6;cursor:default;}
+.mbtn2.no{background:var(--panel2);color:var(--muted);border:1px solid var(--border);}
+.merr{color:#ff5555;font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+
+/* SUMMARY */
+.soverlay{position:fixed;inset:0;background:rgba(5,5,10,0.96);z-index:8000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.35s;}
+.soverlay.show{opacity:1;pointer-events:all;}
+.sbox{background:var(--panel);border:1px solid var(--border);border-radius:24px;padding:26px 22px;width:330px;max-width:92vw;position:relative;overflow:hidden;transform:translateY(50px) scale(0.9);transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1);}
+.soverlay.show .sbox{transform:translateY(0) scale(1);}
+.cfwrap{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;}
+.cp{position:absolute;animation:cfFall linear forwards;}
+@keyframes cfFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1;}100%{transform:translateY(400px) rotate(540deg);opacity:0;}}
+.shead{text-align:center;margin-bottom:18px;position:relative;}
+.semoji{font-size:48px;line-height:1;margin-bottom:6px;animation:popIn 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;}
+@keyframes popIn{0%{transform:scale(0) rotate(-15deg);opacity:0;}100%{transform:scale(1) rotate(0deg);opacity:1;}}
+.stitle2{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:var(--accent);}
+.ssub{font-size:11px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.sstat{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px;text-align:center;}
+.sv{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--accent);line-height:1;}
+.sv.b{color:var(--accent2);}.sv.g{color:var(--green);}.sv.gld{color:var(--gold);}
+.sl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px;}
+.spills{margin-bottom:14px;}
+.spill-title{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.spill{display:inline-flex;align-items:center;gap:4px;background:rgba(255,77,0,0.08);border:1px solid rgba(255,77,0,0.25);border-radius:20px;padding:3px 8px;font-size:10px;font-weight:600;margin:2px;color:var(--text);}
+.sbtns{display:flex;gap:8px;}
+.sbtn{flex:1;padding:12px;border-radius:11px;border:none;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;}
+.sbtn.main{background:var(--accent);color:white;}
+.sbtn.main:hover{background:#ff6120;}
+.sbtn.shr{background:var(--panel2);color:var(--accent2);border:1px solid rgba(0,200,255,0.25);}
+
+
+/* ROOM EXPERIENCE */
+#pg-room{background:var(--bg);flex-direction:column;overflow:hidden;}
+.room-header{padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.room-back{width:32px;height:32px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;flex-shrink:0;}
+.room-header-info{flex:1;}
+.room-header-code{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);letter-spacing:3px;line-height:1;}
+.room-header-status{font-size:10px;color:var(--muted);letter-spacing:1px;}
+.room-header-days{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--accent2);letter-spacing:2px;}
+.room-tabs{display:flex;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;}
+.rtab{flex:1;padding:11px 4px;text-align:center;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:1.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;}
+.rtab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.rpage{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.rpage.active{display:flex;animation:pgIn 0.22s ease both;}
+
+/* ROOM RUN TAB */
+.rrun-minimap{width:100%;height:180px;flex-shrink:0;}
+#roomMinimap{width:100%;height:100%;}
+.rrun-timer{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent2);letter-spacing:2px;text-align:center;padding:6px 0 2px;flex-shrink:0;}
+.rrun-status{font-size:10px;color:var(--muted);text-align:center;letter-spacing:2px;text-transform:uppercase;flex-shrink:0;}
+.rrun-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px 0;flex-shrink:0;}
+.rrun-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;position:relative;overflow:hidden;}
+.rrun-card.live::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);animation:scanLine 1.5s linear infinite;}
+.rrv{font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;color:var(--accent);}
+.rrv.b{color:var(--accent2);}.rrv.g{color:var(--green);}.rrv.gld{color:var(--gold);}
+.rrl{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:3px;}
+.rrun-pills{padding:8px 12px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex-shrink:0;}
+.rrun-btn{margin:10px 12px;padding:16px;border-radius:16px;border:none;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;cursor:pointer;background:var(--accent);color:white;box-shadow:0 0 30px rgba(255,77,0,0.4);transition:all 0.2s;flex-shrink:0;}
+.rrun-btn.running{background:#cc2200;animation:runpulse 1.8s infinite;}
+.rrun-btn:disabled{background:var(--panel2);color:var(--muted);box-shadow:none;cursor:default;}
+
+/* ROOM STATS TAB */
+.stats-run-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;position:relative;}
+.stats-run-label{position:absolute;top:10px;right:12px;font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:1px;padding:2px 8px;border-radius:20px;background:rgba(255,77,0,0.15);color:var(--accent);border:1px solid rgba(255,77,0,0.3);}
+.stats-run-name{font-size:13px;font-weight:700;margin-bottom:2px;}
+.stats-run-meta{font-size:11px;color:var(--muted);margin-bottom:8px;}
+.stats-run-row{display:flex;gap:8px;}
+.stats-run-stat{flex:1;background:var(--panel);border-radius:8px;padding:8px;text-align:center;}
+.stats-run-val{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);line-height:1;}
+.stats-run-lbl{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+
+/* ROOM LEADERBOARD TAB */
+.rlb-card{display:flex;align-items:center;gap:12px;padding:14px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;transition:all 0.2s;}
+.rlb-card.me{border-color:rgba(255,77,0,0.4);background:rgba(255,77,0,0.05);}
+.rlb-rank{font-family:'Bebas Neue',sans-serif;font-size:26px;width:32px;text-align:center;color:var(--muted);}
+.rlb-rank.g{color:#ffd700;}.rlb-rank.s{color:#c0c0c0;}.rlb-rank.b{color:#cd7f32;}
+.rlb-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:18px;color:white;flex-shrink:0;}
+.rlb-name{font-size:14px;font-weight:700;}
+.rlb-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.rlb-km{font-family:'Bebas Neue',sans-serif;font-size:24px;text-align:right;}
+.rlb-km span{font-size:11px;color:var(--muted);}
+.rlb-runs{font-size:10px;color:var(--muted);text-align:right;margin-top:2px;}
+
+
+/* CHALLENGE ZONE MODAL */
+.challenge-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:7000;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.3s;backdrop-filter:blur(4px);}
+.challenge-overlay.show{opacity:1;pointer-events:all;}
+.challenge-sheet{background:var(--panel);border-radius:24px 24px 0 0;padding:28px 24px 36px;width:100%;max-width:500px;transform:translateY(100%);transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+.challenge-overlay.show .challenge-sheet{transform:translateY(0);}
+.challenge-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;}
+.challenge-zone-name{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:var(--text);margin-bottom:4px;}
+.challenge-zone-city{font-size:11px;color:var(--accent2);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;}
+.challenge-owner-row{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
+.challenge-owner-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:18px;color:white;flex-shrink:0;}
+.challenge-owner-name{font-size:14px;font-weight:700;}
+.challenge-owner-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.challenge-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px;}
+.challenge-stat{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;}
+.challenge-stat-val{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);line-height:1;}
+.challenge-stat-lbl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px;}
+.challenge-info{background:rgba(255,77,0,0.08);border:1px solid rgba(255,77,0,0.2);border-radius:12px;padding:14px;margin-bottom:20px;}
+.challenge-info-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;color:var(--accent);margin-bottom:6px;}
+.challenge-info-text{font-size:12px;color:rgba(255,255,255,0.6);line-height:1.7;}
+.challenge-route-preview{background:var(--panel2);border:1px solid var(--border);border-radius:12px;overflow:hidden;height:120px;margin-bottom:20px;position:relative;}
+#challengeRouteMap{width:100%;height:100%;}
+.challenge-route-label{position:absolute;top:8px;left:8px;background:rgba(0,200,255,0.9);color:#000;font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:1px;}
+.challenge-btns{display:flex;gap:10px;}
+.challenge-start-btn{flex:2;padding:16px;border-radius:14px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;cursor:pointer;box-shadow:0 0 24px rgba(255,77,0,0.4);transition:all 0.2s;}
+.challenge-start-btn:hover{background:#ff6120;}
+.challenge-cancel-btn{flex:1;padding:16px;border-radius:14px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;cursor:pointer;}
+/* Challenge run overlay */
+.crun-overlay{position:fixed;inset:0;background:var(--bg);z-index:6000;display:none;flex-direction:column;}
+.crun-overlay.show{display:flex;}
+.crun-header{padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.crun-back{width:32px;height:32px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+.crun-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--accent);}
+.crun-sub{font-size:10px;color:var(--muted);letter-spacing:1px;}
+.crun-map{flex:1;position:relative;}
+#challengeMap{width:100%;height:100%;}
+.crun-progress{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(10,10,15,0.95));padding:16px;}
+.crun-progress-bar-wrap{height:6px;background:var(--border);border-radius:3px;margin-bottom:12px;overflow:hidden;}
+.crun-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--gold));border-radius:3px;transition:width 0.5s ease;}
+.crun-stats-row{display:flex;gap:8px;}
+.crun-stat{flex:1;background:rgba(17,17,26,0.9);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;}
+.crun-val{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);line-height:1;}
+.crun-val.b{color:var(--accent2);}
+.crun-lbl{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+.crun-btn-wrap{padding:12px 16px;background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;}
+.crun-end-btn{width:100%;padding:15px;border-radius:14px;border:none;background:#cc2200;color:white;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;cursor:pointer;animation:runpulse 1.8s infinite;}
+/* capture success */
+.capture-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9000;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;}
+.capture-overlay.show{display:flex;animation:fadeIn 0.4s ease;}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+.capture-emoji{font-size:80px;animation:popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) both;}
+.capture-title{font-family:'Bebas Neue',sans-serif;font-size:42px;letter-spacing:4px;color:var(--accent);margin-top:16px;text-shadow:0 0 40px rgba(255,77,0,0.7);}
+.capture-zone{font-size:18px;color:var(--text);margin-top:8px;font-weight:700;}
+.capture-sub{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.6;}
+.capture-done-btn{margin-top:28px;padding:14px 36px;border-radius:30px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;cursor:pointer;box-shadow:0 0 30px rgba(255,77,0,0.5);}
+
+/* TOAST */
+.toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9990;transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,0.4);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.leaflet-container{background:#0a0a0f;}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-ring"></div>
+  <div class="splash-ring"></div>
+  <div class="splash-logo">ZON<span>R</span></div>
+  <div class="splash-sub">Maharashtra</div>
+  <div class="splash-tagline">Run. Claim. Dominate.</div>
+  <div class="splash-dots">
+    <div class="splash-dot"></div>
+    <div class="splash-dot"></div>
+    <div class="splash-dot"></div>
+  </div>
+</div>
+
+<!-- AUTH -->
+<div id="authModal">
+  <div class="auth-brand">
+    <div class="auth-brand-logo">ZON<span>R</span></div>
+    <div class="auth-brand-sub">🗺 MAHARASHTRA · CLAIM YOUR TERRITORY</div>
+  </div>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabL" onclick="showTab('login')">LOGIN</div>
+      <div class="auth-tab" id="tabS" onclick="showTab('signup')">SIGN UP</div>
+    </div>
+    <div id="loginForm">
+      <div class="afield"><label>Email</label><input type="email" id="lEmail" placeholder="you@email.com"></div>
+      <div class="afield"><label>Password</label><input type="password" id="lPass" placeholder="••••••••"></div>
+      <button class="abtn" id="loginBtn" onclick="doLogin()">LOGIN</button>
+    </div>
+    <div id="signupForm" style="display:none">
+      <div class="afield"><label>Your Name</label><input type="text" id="sName" placeholder="Your name"></div>
+      <div class="afield"><label>Email</label><input type="email" id="sEmail" placeholder="you@email.com"></div>
+      <div class="afield"><label>Password</label><input type="password" id="sPass" placeholder="Min 6 characters"></div>
+      <button class="abtn" id="signupBtn" onclick="doSignup()">CREATE ACCOUNT</button>
+    </div>
+    <div class="aerr" id="authErr"></div>
+  </div>
+</div>
+
+<!-- DRAWER -->
+<div class="doverlay" id="doverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="dhead">
+    <div><div class="dlogo">ZON<span>R</span></div><div class="dsub">MAHARASHTRA</div></div>
+    <div class="dclose" onclick="closeDrawer()">✕</div>
+  </div>
+  <div class="dnav">
+    <div class="ditem" id="di-run" onclick="goTab('run')"><div class="dicon">🏃</div><div class="dlabel">START RUN</div><div class="dbadge" style="background:var(--green);color:#000">GO</div></div>
+    <div class="ditem active" id="di-map" onclick="goTab('map')"><div class="dicon">🗺</div><div class="dlabel">MAP</div></div>
+    <div class="ditem" id="di-tracks" onclick="goTab('tracks')"><div class="dicon">📋</div><div class="dlabel">TRACKS</div></div>
+    <div class="ditem" id="di-lb" onclick="goTab('lb')"><div class="dicon">🏆</div><div class="dlabel">LEADERBOARD</div></div>
+    <div class="ditem" id="di-zones" onclick="goTab('zones')"><div class="dicon">📍</div><div class="dlabel">ZONES</div></div>
+    <div class="ddiv"></div>
+    <div class="ditem" id="di-race" onclick="goTab('race')"><div class="dicon">🔥</div><div class="dlabel">RACE WEEK</div><div class="dbadge">NEW</div></div>
+    <div class="ditem" id="di-acc" onclick="goTab('acc')"><div class="dicon">👤</div><div class="dlabel">MY ACCOUNT</div></div>
+  </div>
+  <div class="dfoot">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="dav" id="dav">?</div>
+      <div><div class="dname" id="dname">Runner</div><div class="dout" onclick="doLogout()">Log out →</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="mbtn" onclick="openDrawer()"><div class="mdot"></div><div class="mdot"></div><div class="mdot"></div></div>
+      <div><div class="logo">ZON<span>R</span></div><div class="city-sub">🗺 MAHARASHTRA</div></div>
+    </div>
+    <div class="hright">
+      <div class="hstat"><div class="hstat-val" id="distVal">0.00</div><div class="hstat-lbl">km</div></div>
+      <div class="hstat"><div class="hstat-val" id="zonesWon">0</div><div class="hstat-lbl">zones</div></div>
+      <div id="timer">00:00</div>
+      <div class="uchip" onclick="goTab('acc')"><div class="uav" id="uav">?</div><span id="uname">User</span></div>
+    </div>
+  </header>
+
+  <!-- RUN -->
+  <div class="page" id="pg-run" style="flex-direction:column;overflow:hidden;">
+    <div class="run-minimap"><div id="minimap"></div></div>
+    <div class="run-timer-big" id="runTimerBig">00:00</div>
+    <div class="run-status" id="runStatus">READY TO RUN</div>
+    <div class="run-speed-bar"><div class="run-speed-fill" id="speedFill"></div></div>
+    <div class="run-stats-grid">
+      <div class="run-stat-card" id="distCard"><div class="rsv" id="runDist">0.00</div><div class="rsl">Kilometres</div></div>
+      <div class="run-stat-card" id="paceCard"><div class="rsv blue" id="runPace">—:——</div><div class="rsl">Pace / km</div></div>
+      <div class="run-stat-card" id="speedCard"><div class="rsv green" id="runSpeed">0.0</div><div class="rsl">km/h Speed</div></div>
+      <div class="run-stat-card" id="zoneCard"><div class="rsv gold" id="runZones">0</div><div class="rsl">Zones Entered</div></div>
+    </div>
+    <div class="run-zone-row" id="runZoneRow"></div>
+    <div class="run-btns">
+      <button class="run-start-btn" id="runTabBtn" onclick="toggleRunFromTab()">START RUN</button>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div class="page active" id="pg-map" style="position:relative;overflow:hidden;flex-direction:column;">
+    <div id="cityBar" style="display:flex;gap:6px;padding:7px 10px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;scrollbar-width:none;z-index:10;"></div>
+    <div id="map" style="flex:1;position:relative;"></div>
+  </div>
+
+  <!-- TRACKS -->
+  <div class="page" id="pg-tracks" style="flex-direction:column;overflow:hidden;">
+    <div style="padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;" id="trackCityPills"></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px;">
+      <div id="trackGrid"></div>
+      <button class="btn-start" onclick="startTrack()">START SELECTED TRACK →</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="page" id="pg-lb"><div class="spage"><div class="stitle">RUNNERS — MAHARASHTRA</div><div id="lbList"></div></div></div>
+
+  <!-- ZONES -->
+  <div class="page" id="pg-zones"><div class="spage"><div class="stitle">ALL ZONES</div><div id="zonesList"></div></div></div>
+
+  <!-- RACE WEEK -->
+  <div class="page" id="pg-race">
+    <div class="spage">
+      <div class="race-hero"><div class="race-title">🔥 RACE WEEK</div><div class="race-sub">Create a room · Share with friends<br>Run Maharashtra 7 days · Most zones wins</div></div>
+      <div class="race-acts">
+        <button class="rbtn pri" onclick="openCreate()">+ CREATE ROOM</button>
+        <button class="rbtn sec" onclick="openJoin()">JOIN WITH CODE</button>
+      </div>
+      <div class="stitle">YOUR ROOMS</div>
+      <div id="roomsList"><div class="rloading">Loading rooms...</div></div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT -->
+  <div class="page" id="pg-acc" style="flex-direction:column;overflow:hidden;">
+    <div style="flex:1;overflow-y:auto;">
+      <div class="acc-hero">
+        <div class="acc-avatar-big" id="accAvatarBig" onclick="openNameModal()">?<div class="acc-edit-badge">✏️</div></div>
+        <div class="acc-name" id="accName">Runner</div>
+        <div class="acc-email" id="accEmail">—</div>
+        <div class="acc-stats-row">
+          <div class="acc-stat"><div class="acc-stat-val" id="accTotalKm">0.0</div><div class="acc-stat-lbl">Total km</div></div>
+          <div class="acc-stat"><div class="acc-stat-val" id="accTotalRuns">0</div><div class="acc-stat-lbl">Runs</div></div>
+          <div class="acc-stat"><div class="acc-stat-val" id="accTotalZones">0</div><div class="acc-stat-lbl">Zones</div></div>
+          <div class="acc-stat"><div class="acc-stat-val" id="accBestKm">0.0</div><div class="acc-stat-lbl">Best km</div></div>
+        </div>
+      </div>
+      <div class="acc-section">
+        <div class="acc-section-title">ACCOUNT</div>
+        <div class="acc-item" onclick="openNameModal()"><div class="acc-item-icon" style="background:rgba(255,77,0,0.1)">✏️</div><div style="flex:1"><div class="acc-item-title">Change Name</div><div class="acc-item-sub" id="accNameSub">—</div></div><div class="acc-item-arrow">›</div></div>
+        <div class="acc-item"><div class="acc-item-icon" style="background:rgba(0,200,255,0.1)">📧</div><div style="flex:1"><div class="acc-item-title">Email</div><div class="acc-item-sub" id="accEmailSub">—</div></div></div>
+      </div>
+      <div class="acc-section">
+        <div class="acc-section-title">RUN HISTORY</div>
+        <div id="runHistory"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">No runs yet — go run! 🏃</div></div>
+      </div>
+      <div class="acc-section">
+        <div class="acc-section-title">ACHIEVEMENTS</div>
+        <div id="accAchievements"><div style="color:var(--muted);font-size:12px;padding:8px;">Complete runs to earn achievements! 🏅</div></div>
+      </div>
+      <div class="acc-section">
+        <div class="acc-section-title">ACTIONS</div>
+        <div class="acc-item" onclick="goTab('race')"><div class="acc-item-icon" style="background:rgba(255,215,0,0.1)">🔥</div><div style="flex:1"><div class="acc-item-title">My Race Rooms</div><div class="acc-item-sub">View and manage rooms</div></div><div class="acc-item-arrow">›</div></div>
+        <div class="acc-item danger" onclick="doLogout()"><div class="acc-item-icon">🚪</div><div style="flex:1"><div class="acc-item-title" style="color:#ff5555">Log Out</div><div class="acc-item-sub">Sign out of ZONR</div></div><div class="acc-item-arrow">›</div></div>
+      </div>
+      <div style="height:20px;"></div>
+    </div>
+  </div>
+
+  <!-- ROOM EXPERIENCE PAGE -->
+  <div class="page" id="pg-room" style="flex-direction:column;overflow:hidden;">
+    <!-- Room header -->
+    <div class="room-header">
+      <div class="room-back" onclick="goTab('race')">‹</div>
+      <div class="room-header-info">
+        <div class="room-header-code" id="roomHeaderCode">ROOM</div>
+        <div class="room-header-status" id="roomHeaderStatus">Loading...</div>
+      </div>
+      <div class="room-header-days" id="roomHeaderDays"></div>
+    </div>
+    <!-- Room tabs -->
+    <div class="room-tabs">
+      <div class="rtab active" id="rt-run" onclick="switchRoomTab('run')">🏃 RUN</div>
+      <div class="rtab" id="rt-stats" onclick="switchRoomTab('stats')">📊 STATS</div>
+      <div class="rtab" id="rt-lb" onclick="switchRoomTab('lb')">🏆 LEADERBOARD</div>
+    </div>
+
+    <!-- RUN TAB -->
+    <div class="rpage active" id="rp-run" style="flex-direction:column;overflow:hidden;">
+      <div class="rrun-minimap"><div id="roomMinimap"></div></div>
+      <div class="rrun-timer" id="rRunTimer">00:00</div>
+      <div class="rrun-status" id="rRunStatus">READY TO RUN</div>
+      <div class="rrun-grid">
+        <div class="rrun-card" id="rDistCard"><div class="rrv" id="rDist">0.00</div><div class="rrl">Kilometres</div></div>
+        <div class="rrun-card" id="rPaceCard"><div class="rrv b" id="rPace">—:——</div><div class="rrl">Pace / km</div></div>
+        <div class="rrun-card" id="rSpeedCard"><div class="rrv g" id="rSpeed">0.0</div><div class="rrl">km/h</div></div>
+        <div class="rrun-card" id="rZoneCard"><div class="rrv gld" id="rZones">0</div><div class="rrl">Zones</div></div>
+      </div>
+      <div class="rrun-pills" id="rZonePills"></div>
+      <button class="rrun-btn" id="rRunBtn" onclick="toggleRoomRun()">START RACE RUN</button>
+    </div>
+
+    <!-- STATS TAB -->
+    <div class="rpage" id="rp-stats" style="overflow:hidden;">
+      <div class="spage">
+        <div class="stitle">RACE RUNS</div>
+        <div id="roomRunsList"><div style="color:var(--muted);font-size:13px;text-align:center;padding:24px;">No runs yet — be first! 🏃</div></div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD TAB -->
+    <div class="rpage" id="rp-lb" style="overflow:hidden;">
+      <div class="spage">
+        <div class="stitle">STANDINGS</div>
+        <div id="roomLbList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="moverlay" id="nameModal">
+  <div class="mbox">
+    <div class="mtitle">CHANGE NAME</div>
+    <div class="mfield"><label>New Name</label><input type="text" id="newNameInput" placeholder="Your name" maxlength="30"></div>
+    <div class="merr" id="nameErr"></div>
+    <div class="mbtns"><button class="mbtn2 no" onclick="closeNameModal()">CANCEL</button><button class="mbtn2 ok" id="nameOkBtn" onclick="doChangeName()">SAVE →</button></div>
+  </div>
+</div>
+<div class="moverlay" id="createModal">
+  <div class="mbox">
+    <div class="mtitle">CREATE RACE ROOM</div>
+    <div class="mfield"><label>Max Players</label>
+      <select id="roomSize"><option value="2">2 Players</option><option value="3">3 Players</option><option value="4" selected>4 Players</option><option value="5">5 Players</option><option value="6">6 Players</option><option value="8">8 Players</option><option value="10">10 Players</option></select>
+    </div>
+    <div class="merr" id="createErr"></div>
+    <div class="mbtns"><button class="mbtn2 no" onclick="closeCreate()">CANCEL</button><button class="mbtn2 ok" id="createOkBtn" onclick="doCreate()">CREATE →</button></div>
+  </div>
+</div>
+<div class="moverlay" id="joinModal">
+  <div class="mbox">
+    <div class="mtitle">JOIN A ROOM</div>
+    <div class="mfield"><label>Room Code</label><input type="text" id="joinCode" placeholder="e.g. AB12CD" style="text-transform:uppercase;letter-spacing:3px;font-family:'Bebas Neue',sans-serif;font-size:20px;"></div>
+    <div class="merr" id="joinErr"></div>
+    <div class="mbtns"><button class="mbtn2 no" onclick="closeJoin()">CANCEL</button><button class="mbtn2 ok" id="joinOkBtn" onclick="doJoin()">JOIN →</button></div>
+  </div>
+</div>
+
+<!-- SUMMARY -->
+<div class="soverlay" id="sumOverlay">
+  <div class="sbox">
+    <div class="cfwrap" id="cfWrap"></div>
+    <div class="shead">
+      <div class="semoji" id="semoji">🏅</div>
+      <div class="stitle2">RUN COMPLETE!</div>
+      <div class="ssub" id="ssub">MAHARASHTRA · ZONR</div>
+    </div>
+    <div class="sgrid">
+      <div class="sstat"><div class="sv" id="sdist">0.00</div><div class="sl">Kilometres</div></div>
+      <div class="sstat"><div class="sv b" id="stime">00:00</div><div class="sl">Duration</div></div>
+      <div class="sstat"><div class="sv g" id="space">—</div><div class="sl">Pace /km</div></div>
+      <div class="sstat"><div class="sv gld" id="szones">0</div><div class="sl">Zones</div></div>
+    </div>
+    <div class="spills" id="spills"></div>
+    <div class="sbtns">
+      <button class="sbtn shr" onclick="shareRun()">📤 SHARE</button>
+      <button class="sbtn main" onclick="closeSummary()">DONE →</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHALLENGE ZONE SHEET -->
+<div class="challenge-overlay" id="challengeOverlay" onclick="closeChallengeSheet(event)">
+  <div class="challenge-sheet">
+    <div class="challenge-handle"></div>
+    <div class="challenge-zone-name" id="czName">Zone Name</div>
+    <div class="challenge-zone-city" id="czCity">📍 City</div>
+    <div class="challenge-owner-row">
+      <div class="challenge-owner-av" id="czOwnerAv" style="background:#ff4d00">P</div>
+      <div>
+        <div class="challenge-owner-name" id="czOwnerName">Owner</div>
+        <div class="challenge-owner-sub">Current zone owner</div>
+      </div>
+    </div>
+    <div class="challenge-stats">
+      <div class="challenge-stat"><div class="challenge-stat-val" id="czKm">0.0</div><div class="challenge-stat-lbl">Owner km</div></div>
+      <div class="challenge-stat"><div class="challenge-stat-val" id="czTarget">0.0</div><div class="challenge-stat-lbl">You need</div></div>
+      <div class="challenge-stat"><div class="challenge-stat-val" id="czExtra">+2km</div><div class="challenge-stat-lbl">Extra</div></div>
+    </div>
+    <div class="challenge-info">
+      <div class="challenge-info-title">⚔️ HOW TO CAPTURE</div>
+      <div class="challenge-info-text" id="czInfoText">Run the same route as the owner + 2km extra. Complete the full distance to claim this zone as yours.</div>
+    </div>
+    <div class="challenge-route-preview">
+      <div id="challengeRouteMap"></div>
+      <div class="challenge-route-label">CHALLENGE ROUTE</div>
+    </div>
+    <div class="challenge-btns">
+      <button class="challenge-cancel-btn" onclick="closeChallengeSheet()">CANCEL</button>
+      <button class="challenge-start-btn" id="czStartBtn" onclick="startChallengeRun()">⚔️ CHALLENGE!</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHALLENGE RUN SCREEN -->
+<div class="crun-overlay" id="crunOverlay">
+  <div class="crun-header">
+    <div class="crun-back" onclick="cancelChallengeRun()">✕</div>
+    <div>
+      <div class="crun-title" id="crunTitle">CHALLENGE RUN</div>
+      <div class="crun-sub" id="crunSub">Complete the route to capture the zone</div>
+    </div>
+  </div>
+  <div class="crun-map">
+    <div id="challengeMap"></div>
+    <div class="crun-progress">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;">PROGRESS</div>
+        <div style="font-size:10px;color:var(--accent);font-weight:700;" id="crunPct">0%</div>
+      </div>
+      <div class="crun-progress-bar-wrap"><div class="crun-progress-fill" id="crunProgressFill" style="width:0%"></div></div>
+      <div class="crun-stats-row">
+        <div class="crun-stat"><div class="crun-val" id="crunDist">0.00</div><div class="crun-lbl">km done</div></div>
+        <div class="crun-stat"><div class="crun-val b" id="crunTarget">0.0</div><div class="crun-lbl">km needed</div></div>
+        <div class="crun-stat"><div class="crun-val" id="crunTimer">00:00</div><div class="crun-lbl">time</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="crun-btn-wrap">
+    <button class="crun-end-btn" onclick="endChallengeRun()">STOP RUN</button>
+  </div>
+</div>
+
+<!-- CAPTURE SUCCESS -->
+<div class="capture-overlay" id="captureOverlay">
+  <div class="capture-emoji">🏆</div>
+  <div class="capture-title">ZONE CAPTURED!</div>
+  <div class="capture-zone" id="captureZoneName">Zone Name</div>
+  <div class="capture-sub">You completed the challenge and claimed this zone!<br>It's now yours on the map 🔥</div>
+  <button class="capture-done-btn" onclick="closeCaptureScreen()">AWESOME! →</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── FIREBASE ───────────────────────────────────────────
+firebase.initializeApp({
+  apiKey:"AIzaSyDQOfcnkcxV9dLxt8uFddkov2aNNVMVbUs",
+  authDomain:"turfwar-3b38a.firebaseapp.com",
+  projectId:"turfwar-3b38a",
+  storageBucket:"turfwar-3b38a.firebasestorage.app",
+  messagingSenderId:"179531351302",
+  appId:"1:179531351302:web:f7840c8cdd50cb86efca87"
+});
+const auth=firebase.auth();
+const db=firebase.firestore();
+
+// ── SPLASH ─────────────────────────────────────────────
+setTimeout(()=>{
+  const s=document.getElementById('splash');
+  s.classList.add('hide');
+  setTimeout(()=>s.remove(),700);
+},2600);
+
+// ── AUTH ───────────────────────────────────────────────
+function showTab(t){
+  document.getElementById('tabL').classList.toggle('active',t==='login');
+  document.getElementById('tabS').classList.toggle('active',t==='signup');
+  document.getElementById('loginForm').style.display=t==='login'?'block':'none';
+  document.getElementById('signupForm').style.display=t==='signup'?'block':'none';
+  document.getElementById('authErr').textContent='';
+}
+async function doLogin(){
+  const btn=document.getElementById('loginBtn');btn.textContent='...';btn.disabled=true;
+  try{await auth.signInWithEmailAndPassword(document.getElementById('lEmail').value.trim(),document.getElementById('lPass').value);}
+  catch(e){document.getElementById('authErr').textContent=cleanErr(e.message);btn.textContent='LOGIN';btn.disabled=false;}
+}
+async function doSignup(){
+  const name=document.getElementById('sName').value.trim();
+  if(!name){document.getElementById('authErr').textContent='Please enter your name';return;}
+  const btn=document.getElementById('signupBtn');btn.textContent='...';btn.disabled=true;
+  try{
+    const cred=await auth.createUserWithEmailAndPassword(document.getElementById('sEmail').value.trim(),document.getElementById('sPass').value);
+    await cred.user.updateProfile({displayName:name});
+    await db.collection('users').doc(cred.user.uid).set({name,email:cred.user.email,km:0,zones:0,runs:[],createdAt:Date.now()});
+  }catch(e){document.getElementById('authErr').textContent=cleanErr(e.message);btn.textContent='CREATE ACCOUNT';btn.disabled=false;}
+}
+function doLogout(){if(confirm('Log out of ZONR?'))auth.signOut();}
+function cleanErr(m){return m.replace('Firebase:','').replace(/\(auth\/.*\)/,'').trim();}
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById('authModal').classList.remove('visible');
+    document.getElementById('app').style.display='flex';
+    const ini=(user.displayName||user.email||'?')[0].toUpperCase();
+    document.getElementById('uav').textContent=ini;
+    document.getElementById('dav').textContent=ini;
+    document.getElementById('dname').textContent=user.displayName||user.email;
+    document.getElementById('uname').textContent=(user.displayName||user.email||'').split(' ')[0];
+    PLAYERS.you.name=user.displayName||'You';
+    onUserReady(user);
+  } else {
+    document.getElementById('authModal').classList.add('visible');
+    document.getElementById('app').style.display='none';
+  }
+});
+
+// ── DUMMY PLAYERS (Indian names) ───────────────────────
+const DUMMY_PLAYERS=[
+  {id:'arjun',  name:'Arjun Patil',   color:'#00c8ff', km:8.4, zones:4},
+  {id:'priya',  name:'Priya Sharma',  color:'#b8ff00', km:6.2, zones:3},
+  {id:'rohan',  name:'Rohan Deshmukh',color:'#ff00aa', km:5.1, zones:2},
+  {id:'kavya',  name:'Kavya Joshi',   color:'#ffd700', km:4.8, zones:2},
+  {id:'siddh',  name:'Siddharth Naik',color:'#00e87a', km:3.5, zones:1},
+];
+const PLAYERS={you:{name:'You',color:'#ff4d00',km:0,zones:0}};
+
+// ── DYNAMIC ZONES (player-created) ────────────────────
+// Zones are created by players after runs using real GPS paths
+// Each zone is stored in Firebase and named via reverse geocoding
+let ZONES = []; // loaded from Firebase + local session
+
+// Reverse geocode a lat/lng to get real area name
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16`,{headers:{'Accept-Language':'en'}});
+    const data = await res.json();
+    const a = data.address || {};
+    // Pick the most specific name available
+    const name = a.neighbourhood || a.suburb || a.quarter || a.village || a.town || a.city_district || a.road || a.county || 'Unknown Area';
+    const city = a.city || a.town || a.village || a.county || 'Maharashtra';
+    return {name, city};
+  } catch(e) {
+    return {name:'My Zone', city:'Maharashtra'};
+  }
+}
+
+// Create a convex-hull style polygon from GPS path points
+function pathToPolygon(path) {
+  if(path.length < 3) return path;
+  // Sample every nth point to make a clean polygon (max 12 points)
+  const step = Math.max(1, Math.floor(path.length / 12));
+  const sampled = path.filter((_,i) => i % step === 0);
+  // Find centroid
+  const clat = sampled.reduce((s,p)=>s+p[0],0)/sampled.length;
+  const clng = sampled.reduce((s,p)=>s+p[1],0)/sampled.length;
+  // Sort by angle around centroid to form convex polygon
+  return sampled.sort((a,b)=>Math.atan2(a[0]-clat,a[1]-clng)-Math.atan2(b[0]-clat,b[1]-clng));
+}
+
+// Load zones from Firebase
+async function loadZones() {
+  try {
+    const snap = await db.collection('zones').get();
+    ZONES = [];
+    snap.forEach(d => ZONES.push(d.data()));
+    drawZones();
+    updateUI();
+  } catch(e) { console.log('zones load:', e); }
+}
+
+// Save a new zone to Firebase after run
+async function saveZoneAfterRun(path, ownerUid, ownerName, ownerColor) {
+  if(path.length < 4) return null;
+  // Use midpoint of path for geocoding
+  const mid = path[Math.floor(path.length/2)];
+  const {name, city} = await reverseGeocode(mid[0], mid[1]);
+  const coords = pathToPolygon([...path]);
+  const zoneId = 'z_' + Date.now() + '_' + ownerUid.slice(0,6);
+  const zone = {
+    id: zoneId,
+    name,
+    city,
+    coords,
+    owner: ownerUid,
+    ownerName,
+    ownerColor,
+    createdAt: Date.now(),
+    km: {}
+  };
+  zone.km[ownerUid] = totalDist;
+  try {
+    await db.collection('zones').doc(zoneId).set(zone);
+    ZONES.push(zone);
+    drawZones();
+    updateUI();
+    return name;
+  } catch(e) { console.log('zone save err:', e); return name; }
+}
+
+// ── TRACKS ─────────────────────────────────────────────
+const TRACKS=[
+  {id:'mum3k',c:'Mumbai',n:'Marine Drive Loop',d:'3K',km:3,diff:'easy',start:[18.9450,72.8230],wp:[[18.9450,72.8230],[18.9475,72.8242],[18.9495,72.8225],[18.9478,72.8202],[18.9455,72.8210],[18.9450,72.8230]]},
+  {id:'mum5k',c:'Mumbai',n:'Bandra Sea Face',d:'5K',km:5,diff:'easy',start:[19.0440,72.8190],wp:[[19.0440,72.8190],[19.0465,72.8215],[19.0492,72.8242],[19.0512,72.8262],[19.0488,72.8280],[19.0458,72.8258],[19.0430,72.8232],[19.0440,72.8190]]},
+  {id:'mum10k',c:'Mumbai',n:'Juhu to Bandra Coastal',d:'10K',km:10,diff:'medium',start:[19.0960,72.8270],wp:[[19.0960,72.8270],[19.0860,72.8245],[19.0700,72.8222],[19.0560,72.8202],[19.0440,72.8190]]},
+  {id:'pun3k',c:'Pune',n:'Koregaon Park Loop',d:'3K',km:3,diff:'easy',start:[18.5360,73.8930],wp:[[18.5360,73.8930],[18.5388,73.8958],[18.5408,73.8988],[18.5385,73.9012],[18.5355,73.8998],[18.5332,73.8965],[18.5360,73.8930]]},
+  {id:'pun5k',c:'Pune',n:'Shivajinagar Circuit',d:'5K',km:5,diff:'easy',start:[18.5320,73.8480],wp:[[18.5320,73.8480],[18.5342,73.8512],[18.5362,73.8548],[18.5345,73.8582],[18.5292,73.8575],[18.5278,73.8538],[18.5320,73.8480]]},
+  {id:'pun10k',c:'Pune',n:'Mulshi Dam Trail',d:'10K',km:10,diff:'hard',start:[18.5100,73.5200],wp:[[18.5100,73.5200],[18.5132,73.5258],[18.5168,73.5312],[18.5148,73.5372],[18.5112,73.5412],[18.5078,73.5368],[18.5100,73.5200]]},
+  {id:'nas3k',c:'Nashik',n:'Godavari Ghat Loop',d:'3K',km:3,diff:'easy',start:[20.0010,73.7830],wp:[[20.0010,73.7830],[20.0038,73.7858],[20.0062,73.7878],[20.0060,73.7825],[20.0010,73.7830]]},
+  {id:'nas5k',c:'Nashik',n:'Panchvati Heritage',d:'5K',km:5,diff:'easy',start:[20.0060,73.7780],wp:[[20.0060,73.7780],[20.0092,73.7812],[20.0122,73.7842],[20.0068,73.7898],[20.0038,73.7872],[20.0060,73.7780]]},
+  {id:'nas10k',c:'Nashik',n:'Nashik City Grand',d:'10K',km:10,diff:'medium',start:[20.0010,73.7830],wp:[[20.0010,73.7830],[20.0052,73.7862],[20.0135,73.7872],[20.0152,73.7830],[20.0048,73.7738],[19.9978,73.7802],[20.0010,73.7830]]},
+  {id:'nag3k',c:'Nagpur',n:'Ambazari Lake Loop',d:'3K',km:3,diff:'easy',start:[21.1280,79.0380],wp:[[21.1280,79.0380],[21.1312,79.0410],[21.1340,79.0440],[21.1288,79.0448],[21.1280,79.0380]]},
+  {id:'nag5k',c:'Nagpur',n:'Sitabuldi Hills Run',d:'5K',km:5,diff:'medium',start:[21.1450,79.0820],wp:[[21.1450,79.0820],[21.1482,79.0858],[21.1512,79.0888],[21.1428,79.0912],[21.1450,79.0820]]},
+  {id:'nag10k',c:'Nagpur',n:'Nagpur Heritage Loop',d:'10K',km:10,diff:'medium',start:[21.1280,79.0380],wp:[[21.1280,79.0380],[21.1372,79.0482],[21.1462,79.0642],[21.1492,79.0742],[21.1392,79.0872],[21.1280,79.0380]]},
+  {id:'aur3k',c:'Chhatrapati Sambhajinagar',n:'Bibi Maqbara Mini',d:'3K',km:3,diff:'easy',start:[19.9010,75.3190],wp:[[19.9010,75.3190],[19.9042,75.3222],[19.9068,75.3248],[19.8990,75.3225],[19.9010,75.3190]]},
+  {id:'aur5k',c:'Chhatrapati Sambhajinagar',n:'Aurangabad Fort Run',d:'5K',km:5,diff:'medium',start:[19.8762,75.3433],wp:[[19.8762,75.3433],[19.8842,75.3512],[19.8785,75.3572],[19.8722,75.3508],[19.8762,75.3433]]},
+  {id:'aur10k',c:'Chhatrapati Sambhajinagar',n:'Daulatabad Trail',d:'10K',km:10,diff:'hard',start:[19.9430,75.2170],wp:[[19.9430,75.2170],[19.9338,75.2425],[19.9158,75.2882],[19.9030,75.3192]]},
+  {id:'kol3k',c:'Kolhapur',n:'Rankala Lake Loop',d:'3K',km:3,diff:'easy',start:[16.7000,74.2290],wp:[[16.7000,74.2290],[16.7032,74.2272],[16.7062,74.2308],[16.6968,74.2342],[16.7000,74.2290]]},
+  {id:'kol5k',c:'Kolhapur',n:'Tarabai Park Circuit',d:'5K',km:5,diff:'medium',start:[16.7080,74.2360],wp:[[16.7080,74.2360],[16.7148,74.2428],[16.7142,74.2498],[16.7080,74.2488],[16.7030,74.2422],[16.7080,74.2360]]},
+  {id:'kol10k',c:'Kolhapur',n:'Kolhapur Grand Tour',d:'10K',km:10,diff:'hard',start:[16.7000,74.2290],wp:[[16.7000,74.2290],[16.7062,74.2312],[16.7095,74.2465],[16.7155,74.2415],[16.7042,74.2385],[16.6998,74.2465],[16.7000,74.2290]]},
+  {id:'sol3k',c:'Solapur',n:'Siddheshwar Lake',d:'3K',km:3,diff:'easy',start:[17.6870,75.9060],wp:[[17.6870,75.9060],[17.6902,75.9092],[17.6872,75.9132],[17.6870,75.9060]]},
+  {id:'sol5k',c:'Solapur',n:'Solapur Fort Road',d:'5K',km:5,diff:'medium',start:[17.6950,75.9100],wp:[[17.6950,75.9100],[17.7012,75.9168],[17.6958,75.9222],[17.6905,75.9162],[17.6950,75.9100]]},
+  {id:'sol10k',c:'Solapur',n:'Solapur Grand Loop',d:'10K',km:10,diff:'medium',start:[17.6870,75.9060],wp:[[17.6870,75.9060],[17.6952,75.9132],[17.7022,75.9218],[17.6912,75.9272],[17.6845,75.9198],[17.6870,75.9060]]},
+  {id:'sat3k',c:'Satara',n:'Satara Morning Run',d:'3K',km:3,diff:'easy',start:[17.6805,74.0183],wp:[[17.6805,74.0183],[17.6838,74.0218],[17.6808,74.0260],[17.6805,74.0183]]},
+  {id:'sat5k',c:'Satara',n:'Ajinkyatara Fort',d:'5K',km:5,diff:'hard',start:[17.6900,74.0250],wp:[[17.6900,74.0250],[17.6952,74.0318],[17.6922,74.0412],[17.6872,74.0348],[17.6900,74.0250]]},
+  {id:'sat10k',c:'Satara',n:'Kas Plateau Trail',d:'10K',km:10,diff:'hard',start:[17.7190,73.8140],wp:[[17.7190,73.8140],[17.7262,73.8228],[17.7208,73.8312],[17.7148,73.8228],[17.7190,73.8140]]},
+  {id:'san3k',c:'Sangli',n:'Krishna Riverfront',d:'3K',km:3,diff:'easy',start:[16.8560,74.5690],wp:[[16.8560,74.5690],[16.8620,74.5758],[16.8565,74.5770],[16.8560,74.5690]]},
+  {id:'san5k',c:'Sangli',n:'Sangli Fort Loop',d:'5K',km:5,diff:'medium',start:[16.8620,74.5750],wp:[[16.8620,74.5750],[16.8682,74.5822],[16.8628,74.5878],[16.8578,74.5815],[16.8620,74.5750]]},
+  {id:'san10k',c:'Sangli',n:'Sangli Grand Run',d:'10K',km:10,diff:'medium',start:[16.8560,74.5690],wp:[[16.8560,74.5690],[16.8648,74.5778],[16.8715,74.5882],[16.8652,74.5965],[16.8548,74.5865],[16.8560,74.5690]]},
+  {id:'nan3k',c:'Nanded',n:'Hazur Sahib Run',d:'3K',km:3,diff:'easy',start:[19.1530,77.3180],wp:[[19.1530,77.3180],[19.1565,77.3215],[19.1535,77.3260],[19.1530,77.3180]]},
+  {id:'nan5k',c:'Nanded',n:'Godavari Bank Circuit',d:'5K',km:5,diff:'easy',start:[19.1480,77.3150],wp:[[19.1480,77.3150],[19.1548,77.3228],[19.1558,77.3302],[19.1488,77.3298],[19.1480,77.3150]]},
+  {id:'nan10k',c:'Nanded',n:'Nanded Heritage Loop',d:'10K',km:10,diff:'medium',start:[19.1530,77.3180],wp:[[19.1530,77.3180],[19.1628,77.3278],[19.1640,77.3385],[19.1515,77.3365],[19.1530,77.3180]]},
+  {id:'amr3k',c:'Amravati',n:'Ambadevi Temple Loop',d:'3K',km:3,diff:'easy',start:[20.9340,77.7700],wp:[[20.9340,77.7700],[20.9400,77.7768],[20.9345,77.7780],[20.9340,77.7700]]},
+  {id:'amr5k',c:'Amravati',n:'Amravati City Circuit',d:'5K',km:5,diff:'easy',start:[20.9374,77.7796],wp:[[20.9374,77.7796],[20.9448,77.7870],[20.9390,77.7930],[20.9328,77.7868],[20.9374,77.7796]]},
+  {id:'amr10k',c:'Amravati',n:'Amravati Lakes Run',d:'10K',km:10,diff:'medium',start:[20.9340,77.7700],wp:[[20.9340,77.7700],[20.9435,77.7800],[20.9508,77.7912],[20.9445,77.8000],[20.9308,77.7858],[20.9340,77.7700]]},
+  {id:'jal3k',c:'Jalgaon',n:'Jalgaon City Run',d:'3K',km:3,diff:'easy',start:[21.0077,75.5626],wp:[[21.0077,75.5626],[21.0138,75.5695],[21.0082,75.5708],[21.0077,75.5626]]},
+  {id:'jal5k',c:'Jalgaon',n:'Tapi Riverfront',d:'5K',km:5,diff:'easy',start:[21.0050,75.5580],wp:[[21.0050,75.5580],[21.0122,75.5662],[21.0132,75.5748],[21.0062,75.5742],[21.0050,75.5580]]},
+  {id:'jal10k',c:'Jalgaon',n:'Ajanta Caves Trail',d:'10K',km:10,diff:'hard',start:[20.5519,75.7000],wp:[[20.5519,75.7000],[20.5588,75.7088],[20.5530,75.7168],[20.5475,75.7088],[20.5519,75.7000]]},
+];
+
+const CITIES=['All','Mumbai','Pune','Nashik','Nagpur','Chhatrapati Sambhajinagar','Kolhapur','Solapur','Satara','Sangli','Nanded','Amravati','Jalgaon','Thane','Pimpri-Chinchwad','Akola','Latur','Ahmednagar'];
+const CITY_COORDS={
+  'Mumbai':[19.0760,72.8777,12],
+  'Pune':[18.5204,73.8567,12],
+  'Nashik':[19.9975,73.7898,13],
+  'Nagpur':[21.1458,79.0882,13],
+  'Chhatrapati Sambhajinagar':[19.8762,75.3433,13],
+  'Kolhapur':[16.7050,74.2433,13],
+  'Solapur':[17.6868,75.9064,13],
+  'Satara':[17.6805,74.0183,13],
+  'Sangli':[16.8524,74.5815,13],
+  'Nanded':[19.1383,77.3210,13],
+  'Amravati':[20.9374,77.7796,13],
+  'Jalgaon':[21.0077,75.5626,13],
+  'Thane':[19.2183,72.9781,13],
+  'Pimpri-Chinchwad':[18.6298,73.7997,13],
+  'Akola':[20.7002,77.0082,13],
+  'Latur':[18.4088,76.5604,13],
+  'Ahmednagar':[19.0952,74.7496,13],
+};
+// City name mapping for display (short labels on map)
+const CITY_DISPLAY={
+  'Chhatrapati Sambhajinagar':'C. Sambhajinagar',
+  'Pimpri-Chinchwad':'Pimpri-C'
+};
+const PLAYER_COLORS=['#ff4d00','#00c8ff','#b8ff00','#ff00aa','#ffd700','#00e87a','#ff8800','#aa00ff'];
+
+// ── STATE ──────────────────────────────────────────────
+let map,youMarker,yourLine,trackLine,minimap,miniYouMarker,miniLine;
+let yourPath=[],zonesThisRun=new Set();
+let running=false,watchId=null,secs=0,timerInt=null,totalDist=0,demoInt=null,demoStep=0;
+let selectedTrack=TRACKS[0],activeTrackCity='All';
+let myRooms=[],mapReady=false;
+let currentSpeedKmh=0,lastSpeedPos=null,lastSpeedTime=null;
+const zonePolys={};
+
+async function onUserReady(user){
+  if(!mapReady){mapReady=true;setTimeout(initMap,120);setTimeout(initMiniMap,200);}
+  buildTrackFilter();renderTracks();
+  await loadZones();
+  updateUI();
+  try{
+    const snap=await db.collection('rooms').get();
+    myRooms=[];
+    snap.forEach(d=>{const data=d.data();if(data.players&&data.players.find(p=>p.uid===user.uid))myRooms.push(data);});
+    myRooms.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  }catch(e){}
+  showToast('👋 Welcome, '+(user.displayName||'Runner')+'! 🗺');
+}
+
+// ── MAP ────────────────────────────────────────────────
+function initMap(){
+  map=L.map('map',{zoomControl:false}).setView([19.2,75.5],7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+  L.control.zoom({position:'topleft'}).addTo(map);
+  const yi=L.divIcon({html:`<div style="width:16px;height:16px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 16px rgba(255,77,0,1)"></div>`,className:'',iconAnchor:[8,8]});
+  youMarker=L.marker([19.2,75.5],{icon:yi}).addTo(map);
+  yourLine=L.polyline([],{color:'#ff4d00',weight:4,opacity:0.95}).addTo(map);
+  trackLine=L.polyline([],{color:'#00c8ff',weight:3,opacity:0.7,dashArray:'9,6'}).addTo(map);
+  // City label markers on map (clickable)
+  Object.entries(CITY_COORDS).forEach(([city,[lat,lng]])=>{
+    const label = CITY_DISPLAY[city]||city;
+    const marker = L.marker([lat,lng],{icon:L.divIcon({
+      html:`<div onclick="zoomToCity('${city}')" style="background:rgba(255,77,0,0.85);color:white;font-family:'Bebas Neue',sans-serif;font-size:10px;padding:2px 7px;border-radius:10px;letter-spacing:1.5px;white-space:nowrap;cursor:pointer">${label.toUpperCase()}</div>`,
+      className:'',iconAnchor:[22,10]
+    })}).addTo(map);
+  });
+  buildCityBar();
+  drawZones();
+}
+
+function buildCityBar(){
+  const bar = document.getElementById('cityBar');
+  if(!bar) return;
+  const allCities = ['All',...Object.keys(CITY_COORDS)];
+  bar.innerHTML = allCities.map(c=>`
+    <div class="cpill" onclick="zoomToCity('${c}')" style="flex-shrink:0;font-size:10px;padding:4px 10px;">
+      ${c==='All'?'🗺 All Maharashtra':CITY_DISPLAY[c]||c}
+    </div>`).join('');
+}
+
+function zoomToCity(city){
+  if(!map) return;
+  // Update city bar active state
+  document.querySelectorAll('#cityBar .cpill').forEach(p=>{
+    p.classList.toggle('active', p.textContent.trim().toLowerCase().includes(city.toLowerCase())||(city==='All'&&p.textContent.includes('All')));
+  });
+  if(city==='All'){
+    map.setView([19.2,75.5],7,{animate:true,duration:0.8});
+  } else if(CITY_COORDS[city]){
+    const[lat,lng,z]=CITY_COORDS[city];
+    map.setView([lat,lng],z,{animate:true,duration:0.8});
+  }
+}
+
+function getAllPlayers(){
+  const all={...PLAYERS};
+  DUMMY_PLAYERS.forEach(p=>{all[p.id]=p;});
+  return all;
+}
+function getOwnerColor(z){
+  // Zone has a fixed ownerColor set at creation time
+  return z.ownerColor || '#ff4d00';
+}
+function getOwnerName(z){
+  return z.ownerName || 'Unknown';
+}
+function isMyZone(z){
+  const user = auth.currentUser;
+  return user && z.owner === user.uid;
+}
+
+// ── DUMMY PLAYER ZONES ON MAP ──────────────────────────
+
+let dummyZonePolys = {};
+
+
+function drawZones(){
+  if(!map)return;
+  ZONES.forEach(z=>{
+    if(zonePolys[z.id])map.removeLayer(zonePolys[z.id]);
+    if(!z.coords||z.coords.length<3)return;
+    const col = getOwnerColor(z);
+    // Solid fill with low opacity — unique per player by their color
+    const poly = L.polygon(z.coords,{
+      color: col,
+      fillColor: col,
+      weight: 2,
+      fillOpacity: 0.25,  // low opacity solid fill
+      opacity: 0.9
+    }).addTo(map);
+    poly.bindTooltip(`<b>${z.name}</b><br><span style="color:#aaa;font-size:10px">${z.city}</span><br>🏃 ${getOwnerName(z)}`,{sticky:true});
+    zonePolys[z.id]=poly;
+  });
+}
+
+// ── MINI MAP ───────────────────────────────────────────
+function initMiniMap(){
+  minimap=L.map('minimap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false}).setView([19.2,75.5],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(minimap);
+  const mi=L.divIcon({html:`<div style="width:14px;height:14px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 12px rgba(255,77,0,1)"></div>`,className:'',iconAnchor:[7,7]});
+  miniYouMarker=L.marker([19.2,75.5],{icon:mi}).addTo(minimap);
+  miniLine=L.polyline([],{color:'#ff4d00',weight:3,opacity:0.9}).addTo(minimap);
+}
+function updateMiniMap(pos){
+  if(!minimap)return;
+  miniYouMarker.setLatLng(pos);
+  miniLine.setLatLngs(yourPath);
+  minimap.setView(pos,16,{animate:true,duration:0.5});
+}
+
+// ── TRACKS ─────────────────────────────────────────────
+function buildTrackFilter(){
+  document.getElementById('trackCityPills').innerHTML=CITIES.map(c=>`<div class="cpill ${c===activeTrackCity?'active':''}" onclick="filterTrackCity('${c}')" style="flex-shrink:0">${c==='All'?'All':c}</div>`).join('');
+}
+function filterTrackCity(c){activeTrackCity=c;buildTrackFilter();renderTracks();}
+function renderTracks(){
+  const fil=activeTrackCity==='All'?TRACKS:TRACKS.filter(t=>t.c===activeTrackCity);
+  const cities=[...new Set(fil.map(t=>t.c))];
+  document.getElementById('trackGrid').innerHTML=cities.map(city=>{
+    const ct=fil.filter(t=>t.c===city);
+    return `<div style="margin-bottom:18px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--accent2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">📍 ${city.toUpperCase()}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        ${ct.map(t=>`<div class="tcard ${t.id===selectedTrack.id?'selected':''}" onclick="selectTrack('${t.id}')">
+          <div class="tdist">${t.d}<br><span>km</span></div>
+          <div class="tname">${t.n}</div>
+          <span class="ttag ${t.diff}">${t.diff.toUpperCase()}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }).join('');
+}
+function selectTrack(id){
+  const t = TRACKS.find(t=>t.id===id);
+  if(t) selectedTrack = t;
+  renderTracks();
+}
+function startTrack(){
+  goTab('run');
+  setTimeout(()=>{
+    // Draw route on main map
+    if(map){
+      trackLine.setLatLngs(selectedTrack.wp);
+      map.fitBounds(L.polyline(selectedTrack.wp).getBounds(),{padding:[50,50]});
+      youMarker.setLatLng(selectedTrack.start);
+      // Add START marker
+      if(window._startMarker) map.removeLayer(window._startMarker);
+      window._startMarker = L.marker(selectedTrack.start,{icon:L.divIcon({
+        html:`<div style="background:#00c8ff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:10px;padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.4)">▶ START</div>`,
+        className:'',iconAnchor:[26,10]
+      })}).addTo(map);
+    }
+    // Draw route on minimap too
+    if(minimap){
+      if(!window._miniTrackLine) window._miniTrackLine = L.polyline([],{color:'#00c8ff',weight:3,opacity:0.7,dashArray:'8,5'}).addTo(minimap);
+      window._miniTrackLine.setLatLngs(selectedTrack.wp);
+      minimap.fitBounds(L.polyline(selectedTrack.wp).getBounds(),{padding:[20,20]});
+      miniYouMarker.setLatLng(selectedTrack.start);
+      // Add START marker on minimap
+      if(window._miniStartMarker) minimap.removeLayer(window._miniStartMarker);
+      window._miniStartMarker = L.marker(selectedTrack.start,{icon:L.divIcon({
+        html:`<div style="background:#00c8ff;color:#000;font-size:9px;padding:1px 5px;border-radius:8px;white-space:nowrap;font-weight:700;">START</div>`,
+        className:'',iconAnchor:[18,8]
+      })}).addTo(minimap);
+    }
+    showToast(`🗺 ${selectedTrack.n} · ${selectedTrack.c} loaded!`);
+  },100);
+}
+
+// ── RUN ────────────────────────────────────────────────
+function toggleRun(){
+  running=!running;
+  const btn=document.getElementById('runTabBtn');
+  if(running){
+    btn.textContent='END RUN';btn.classList.add('running');
+    secs=0;totalDist=0;yourPath.length=0;zonesThisRun.clear();currentSpeedKmh=0;lastSpeedPos=null;lastSpeedTime=null;
+    if(yourLine)yourLine.setLatLngs([]);
+    if(miniLine)miniLine.setLatLngs([]);
+    // Keep track route visible during run — clear only your path line
+    document.getElementById('runZoneRow').innerHTML='';
+    document.getElementById('runStatus').textContent='RUNNING...';
+    ['distCard','paceCard','speedCard','zoneCard'].forEach(id=>document.getElementById(id).classList.add('live'));
+    timerInt=setInterval(()=>{
+      secs++;
+      const t=pad(Math.floor(secs/60))+':'+pad(secs%60);
+      document.getElementById('timer').textContent=t;
+      document.getElementById('runTimerBig').textContent=t;
+      updateRunTab();
+    },1000);
+    if(navigator.geolocation){watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true,maximumAge:5000});showToast('📍 GPS locked — go!');}
+    else{showToast('Demo mode');startDemo();}
+    if(minimap)setTimeout(()=>minimap.invalidateSize(),100);
+  } else {
+    btn.textContent='START RUN';btn.classList.remove('running');
+    document.getElementById('runStatus').textContent='READY TO RUN';
+    document.getElementById('speedFill').style.width='0%';
+    ['distCard','paceCard','speedCard','zoneCard'].forEach(id=>document.getElementById(id).classList.remove('live'));
+    // Clear track guide line after run ends
+    if(trackLine)trackLine.setLatLngs([]);
+    if(window._miniTrackLine)window._miniTrackLine.setLatLngs([]);
+    clearInterval(timerInt);clearInterval(demoInt);
+    if(watchId){navigator.geolocation.clearWatch(watchId);watchId=null;}
+    const runDist = totalDist;
+    const runSecs = secs;
+    const runPath = [...yourPath];
+    showSummary();
+    // Reset live header stats
+    document.getElementById('distVal').textContent='0.00';
+    document.getElementById('timer').textContent='00:00';
+    document.getElementById('runTimerBig').textContent='00:00';
+    document.getElementById('zonesWon').textContent='0';
+    // Reset player km/zones for next run
+    PLAYERS.you.km=0;PLAYERS.you.zones=0;
+    const user=auth.currentUser;
+    if(user&&runDist>0){
+      // Save zone from run path
+      const userColor = '#ff4d00';
+      saveZoneAfterRun(runPath, user.uid, user.displayName||'Runner', userColor).then(zoneName=>{
+        if(zoneName) showToast(`📍 Zone "${zoneName}" claimed!`);
+      });
+      // Save run record to Firebase
+      db.collection('users').doc(user.uid).get().then(snap=>{
+        if(snap.exists){
+          const d=snap.data();
+          const runRecord={km:runDist,time:pad(Math.floor(runSecs/60))+':'+pad(runSecs%60),pace:runDist>0?fmtPace(runSecs/runDist):'—',track:selectedTrack.n,city:selectedTrack.c,zones:zonesThisRun.size,date:Date.now()};
+          db.collection('users').doc(user.uid).update({km:(d.km||0)+runDist,zones:(d.zones||0)+zonesThisRun.size,runs:[...(d.runs||[]),runRecord]});
+        }
+      });
+    }
+  }
+}
+function toggleRunFromTab(){toggleRun();}
+function startDemo(){
+  const pts=selectedTrack.wp;demoStep=0;
+  demoInt=setInterval(()=>{if(!running)return;movePlayer(pts[demoStep%pts.length]);demoStep++;},900);
+}
+function onGPS(pos){movePlayer([pos.coords.latitude,pos.coords.longitude]);}
+function onGPSErr(){showToast('GPS error — demo mode');startDemo();}
+function movePlayer(pos){
+  const now=Date.now();
+  if(yourPath.length>0){
+    const d=distKm(yourPath[yourPath.length-1],pos);
+    totalDist+=d;PLAYERS.you.km+=d;
+    document.getElementById('distVal').textContent=totalDist.toFixed(2);
+    if(lastSpeedPos&&lastSpeedTime){const dt=(now-lastSpeedTime)/3600000;const dd=distKm(lastSpeedPos,pos);if(dt>0)currentSpeedKmh=Math.min(dd/dt,40);}
+    lastSpeedPos=pos;lastSpeedTime=now;
+    ZONES.forEach(z=>{if(inPoly(pos,z.coords)){z.km.you=(z.km.you||0)+d;zonesThisRun.add(z.id);}});
+    updateUI();updateRunTab();
+  }
+  yourPath.push(pos);
+  if(yourLine)yourLine.setLatLngs(yourPath);
+  if(youMarker)youMarker.setLatLng(pos);
+  updateMiniMap(pos);
+}
+function updateRunTab(){
+  document.getElementById('runDist').textContent=totalDist.toFixed(2);
+  document.getElementById('runPace').textContent=totalDist>0&&secs>0?fmtPace(secs/totalDist):'—:——';
+  document.getElementById('runSpeed').textContent=currentSpeedKmh.toFixed(1);
+  document.getElementById('speedFill').style.width=Math.min(currentSpeedKmh/20*100,100)+'%';
+  document.getElementById('runZones').textContent=zonesThisRun.size;
+  const zl=ZONES.filter(z=>zonesThisRun.has(z.id));
+  document.getElementById('runZoneRow').innerHTML=zl.map(z=>`<div class="rzpill">📍 ${z.name}</div>`).join('');
+}
+
+// ── SUMMARY ────────────────────────────────────────────
+function showSummary(){
+  const m=Math.floor(secs/60),s=secs%60;
+  document.getElementById('semoji').textContent=totalDist>=10?'🏆':totalDist>=5?'🔥':totalDist>=3?'🏅':'👟';
+  document.getElementById('ssub').textContent=selectedTrack.n+' · '+selectedTrack.c;
+  document.getElementById('sdist').textContent=totalDist.toFixed(2);
+  document.getElementById('stime').textContent=pad(m)+':'+pad(s);
+  document.getElementById('space').textContent=totalDist>0?fmtPace(secs/totalDist):'—';
+  const zl=ZONES.filter(z=>zonesThisRun.has(z.id));
+  document.getElementById('szones').textContent=zl.length;
+  document.getElementById('spills').innerHTML=zl.length?`<div class="spill-title">Zones Entered</div>`+zl.map(z=>`<span class="spill">📍 ${z.name} <span style="color:var(--muted);font-size:9px;margin-left:3px">${z.city}</span></span>`).join(''):'';
+  spawnCF();
+  document.getElementById('sumOverlay').classList.add('show');
+}
+function closeSummary(){document.getElementById('sumOverlay').classList.remove('show');}
+function spawnCF(){
+  const c=document.getElementById('cfWrap');c.innerHTML='';
+  const cols=['#ff4d00','#00c8ff','#ffd700','#b8ff00','#ff00aa','#00e87a','#fff'];
+  for(let i=0;i<30;i++){const el=document.createElement('div');el.className='cp';el.style.cssText=`left:${Math.random()*100}%;background:${cols[~~(Math.random()*cols.length)]};width:${5+Math.random()*7}px;height:${5+Math.random()*7}px;border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${1.2+Math.random()*1.8}s;animation-delay:${Math.random()*.7}s;`;c.appendChild(el);}
+}
+function shareRun(){
+  const t=`🏃 ZONR Run!\n📍 ${selectedTrack.n} · ${selectedTrack.c}\n🔥 ${totalDist.toFixed(2)} km · ${document.getElementById('stime').textContent}\n⚡ ${document.getElementById('space').textContent} /km\n\nJoin ZONR! ${location.href}`;
+  navigator.share?navigator.share({title:'My ZONR Run',text:t,url:location.href}).catch(()=>{}):navigator.clipboard.writeText(t).then(()=>showToast('📋 Copied!')).catch(()=>{});
+}
+function fmtPace(s){const m=~~(s/60),sc=Math.round(s%60);return m+':'+(sc<10?'0':'')+sc;}
+
+// ── RACE WEEK ──────────────────────────────────────────
+function openCreate(){document.getElementById('createModal').classList.add('show');document.getElementById('createErr').textContent='';}
+function closeCreate(){document.getElementById('createModal').classList.remove('show');}
+function openJoin(){document.getElementById('joinModal').classList.add('show');document.getElementById('joinErr').textContent='';document.getElementById('joinCode').value='';}
+function closeJoin(){document.getElementById('joinModal').classList.remove('show');}
+
+async function doCreate(){
+  const btn=document.getElementById('createOkBtn');btn.textContent='...';btn.disabled=true;
+  try{
+    const user=auth.currentUser;
+    const code=Math.random().toString(36).substring(2,8).toUpperCase();
+    const size=parseInt(document.getElementById('roomSize').value);
+    const roomData={code,host:user.displayName,hostUid:user.uid,maxPlayers:size,
+      players:[{uid:user.uid,name:user.displayName,color:'#ff4d00',zones:0,km:0,zonesOwned:[]}],
+      status:'waiting',createdAt:Date.now(),startedAt:null,endsAt:null,winner:null};
+    await db.collection('rooms').doc(code).set(roomData);
+    closeCreate();
+    myRooms.unshift(roomData);
+    renderRooms();
+    showToast(`✅ Room ${code} created! Share it 🔥`);
+  }catch(e){document.getElementById('createErr').textContent=e.message;}
+  finally{btn.textContent='CREATE →';btn.disabled=false;}
+}
+
+async function doJoin(){
+  const code=document.getElementById('joinCode').value.trim().toUpperCase();
+  if(!code){document.getElementById('joinErr').textContent='Enter a room code';return;}
+  const btn=document.getElementById('joinOkBtn');btn.textContent='...';btn.disabled=true;
+  try{
+    const ref=db.collection('rooms').doc(code);
+    const snap=await ref.get();
+    if(!snap.exists)throw new Error('Room not found');
+    const data=snap.data();
+    if(data.status==='ended')throw new Error('This race has ended');
+    if(data.players.length>=data.maxPlayers&&data.status==='waiting')throw new Error('Room is full');
+    const user=auth.currentUser;
+    if(!data.players.find(p=>p.uid===user.uid)){
+      if(data.status!=='waiting')throw new Error('Race already started — cannot join');
+      const pcolor=PLAYER_COLORS[data.players.length%PLAYER_COLORS.length];
+      const players=[...data.players,{uid:user.uid,name:user.displayName,color:pcolor,zones:0,km:0,zonesOwned:[]}];
+      const upd={players};
+      if(players.length===data.maxPlayers){upd.status='active';upd.startedAt=Date.now();upd.endsAt=Date.now()+7*864e5;}
+      await ref.update(upd);
+      const updated=(await ref.get()).data();
+      closeJoin();
+      if(!myRooms.find(r=>r.code===code))myRooms.unshift(updated);
+      else myRooms=myRooms.map(r=>r.code===code?updated:r);
+    } else {
+      closeJoin();
+      if(!myRooms.find(r=>r.code===code))myRooms.unshift(data);
+    }
+    renderRooms();
+    showToast(`✅ Joined room ${code}!`);
+  }catch(e){document.getElementById('joinErr').textContent=e.message;}
+  finally{btn.textContent='JOIN →';btn.disabled=false;}
+}
+
+async function refreshRooms(){
+  const user=auth.currentUser;if(!user)return;
+  try{
+    const snap=await db.collection('rooms').get();
+    myRooms=[];
+    snap.forEach(d=>{const data=d.data();if(data.players&&data.players.find(p=>p.uid===user.uid))myRooms.push(data);});
+    myRooms.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    renderRooms();
+  }catch(e){}
+}
+
+function renderRooms(){
+  const el=document.getElementById('roomsList');
+  if(!myRooms.length){el.innerHTML='<div class="rloading">No rooms yet.<br>Create one and invite friends! 🔥</div>';return;}
+  const sl={waiting:'WAITING FOR PLAYERS',active:'RACE ACTIVE 🔥',ended:'ENDED'};
+  el.innerHTML=myRooms.map((r,ri)=>{
+    const isActive=r.status==='active';
+    const isWaiting=r.status==='waiting';
+    const user=auth.currentUser;
+    const iAmIn=r.players&&r.players.find(p=>p.uid===user?.uid);
+    const spotsLeft=r.maxPlayers-(r.players||[]).length;
+    const endsIn=r.endsAt?Math.max(0,Math.ceil((r.endsAt-Date.now())/864e5)):null;
+    const startedAgo=r.startedAt?Math.floor((Date.now()-r.startedAt)/864e5):0;
+
+    // Sort players by zones then km
+    const sortedPlayers=[...(r.players||[])].sort((a,b)=>(b.zones||0)-(a.zones||0)||(b.km||0)-(a.km||0));
+    const rankClasses=['g','s','b',''];
+
+    // Zone ownership inside race
+    const ownedByPlayers={};
+    ZONES.forEach(z=>{
+      const own=getOwner(z);
+      if(own&&own!=='you'){
+        const rp=r.players?.find(p=>p.name===getPlayerName(own));
+        if(rp){if(!ownedByPlayers[own])ownedByPlayers[own]=[];ownedByPlayers[own].push(z.name);}
+      }
+    });
+
+    return `<div class="rcard" style="animation-delay:${ri*0.06}s">
+      <div class="rcode">${r.code}</div>
+      <div class="rstatrow">
+        <span class="rbadge ${r.status||'waiting'}">${sl[r.status]||r.status}</span>
+        ${isWaiting&&spotsLeft>0?`<span style="font-size:10px;color:var(--muted)">${spotsLeft} spot${spotsLeft!==1?'s':''} left</span>`:''}
+      </div>
+
+      ${isActive?`
+      <div class="rcountdown">
+        <div class="rcountdown-val">${endsIn} DAY${endsIn!==1?'S':''}</div>
+        <div class="rcountdown-lbl">Remaining · Day ${startedAgo+1} of 7</div>
+      </div>`:''} 
+
+      <div class="rsec-title">🏆 STANDINGS</div>
+      <div style="margin-bottom:10px;">
+        ${sortedPlayers.map((p,i)=>`
+          <div class="rplayer-row">
+            <div class="rplayer-rank ${rankClasses[i]||''}">${i+1}</div>
+            <div class="rplayer-dot" style="background:${p.color||'#888'}"></div>
+            <div class="rplayer-name">${p.name}${p.uid===user?.uid?' 👤':''}</div>
+            <div class="rplayer-stats">
+              <div class="rplayer-zones">${p.zones||0} <span style="font-size:10px;color:var(--muted)">zones</span></div>
+              <div class="rplayer-km">${(p.km||0).toFixed(1)} km</div>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      ${isActive?`
+      <div class="rsec-title">📍 ZONE BATTLES</div>
+      <div style="margin-bottom:10px;">
+        ${ZONES.slice(0,6).map(z=>{
+          const own=getOwner(z);
+          const col=own?getPlayerColor(own):'#3355aa';
+          const nm=own?getPlayerName(own):'Unclaimed';
+          return `<div class="rzone-row"><div class="rzone-dot" style="background:${col}"></div><div class="rzone-name">${z.name}</div><div class="rzone-owner">${nm}</div></div>`;
+        }).join('')}
+        <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px;">See all zones in the Zones tab</div>
+      </div>`:''} 
+
+      ${isWaiting&&iAmIn?`
+      <div style="background:rgba(255,170,0,0.08);border:1px solid rgba(255,170,0,0.2);border-radius:10px;padding:10px;margin-bottom:10px;text-align:center;">
+        <div style="font-size:12px;color:#ffaa00;font-weight:600;">⏳ Waiting for ${spotsLeft} more player${spotsLeft!==1?'s':''} to join</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">Race starts when room is full</div>
+      </div>`:''} 
+
+      ${isActive&&iAmIn?`
+      <button class="rentered-btn" onclick="goTab('run');showToast('🔥 Go run and claim zones!')">🏃 GO RUN NOW</button>`:''} 
+
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button onclick="openRoom('${r.code}')" style="flex:2;padding:11px;border-radius:8px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;">ENTER ROOM →</button>
+        <button class="rshare" onclick="shareRoom('${r.code}')" style="flex:1;margin-top:0;">📤 Share</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function shareRoom(code){
+  const url=`${location.href.split('?')[0]}?room=${code}`;
+  const t=`🔥 Join my ZONR Race Week!\nRoom code: ${code}\nRun Maharashtra, claim zones, win the week!\n\n👇 Join here: ${url}`;
+  navigator.share?navigator.share({title:'Join ZONR Race!',text:t,url}).catch(()=>{}):navigator.clipboard.writeText(t).then(()=>showToast('📋 Room link copied!')).catch(()=>showToast('Code: '+code));
+}
+
+// ── UI UPDATE ──────────────────────────────────────────
+function updateUI(){
+  drawZones();
+  const user = auth.currentUser;
+  const myZones = ZONES.filter(z=>user&&z.owner===user.uid);
+  document.getElementById('zonesWon').textContent=myZones.length;
+  PLAYERS.you.zones=myZones.length;
+  renderLeaderboard();
+  renderZonesList();}
+
+// Separate so it can be called after Firebase users load
+async function renderLeaderboard(){
+  const user2 = auth.currentUser;
+  const lbMap = {};
+
+  // 1. Add dummy players
+  DUMMY_PLAYERS.forEach(p=>{
+    lbMap[p.id]={uid:p.id,name:p.name,color:p.color,km:p.km,zones:0,isNew:false};
+  });
+
+  // 2. Add ALL real Firebase users — even with 0 runs
+  try{
+    const snap = await db.collection('users').get();
+    const playerColors=['#ff4d00','#00c8ff','#b8ff00','#ff00aa','#ffd700','#00e87a','#ff8800','#aa00ff'];
+    let colorIdx=0;
+    snap.forEach(d=>{
+      const data=d.data();
+      const uid=d.id;
+      if(!lbMap[uid]){
+        const color = uid===user2?.uid ? '#ff4d00' : playerColors[colorIdx++%playerColors.length];
+        lbMap[uid]={uid,name:data.name||'Runner',color,km:data.km||0,zones:data.zones||0,isNew:(data.km||0)===0&&(data.zones||0)===0};
+      } else {
+        // Update km from Firebase if they have runs
+        if(data.km>0) lbMap[uid].km=data.km;
+        if(data.zones>0) lbMap[uid].zones=data.zones;
+      }
+    });
+  }catch(e){console.log('lb fetch err:',e);}
+
+  // 3. Add real zones data on top
+  ZONES.forEach(z=>{
+    const uid=z.owner;if(!uid)return;
+    if(!lbMap[uid])lbMap[uid]={uid,name:getOwnerName(z),color:getOwnerColor(z),km:0,zones:0,isNew:false};
+    lbMap[uid].zones++;
+    lbMap[uid].km+=(z.km[uid]||0);
+  });
+
+  // 4. Make sure current user is always in
+  if(user2&&!lbMap[user2.uid]){
+    lbMap[user2.uid]={uid:user2.uid,name:user2.displayName||'Runner',color:'#ff4d00',km:0,zones:0,isNew:true};
+  }
+
+  const allPlayers=Object.values(lbMap).sort((a,b)=>b.zones-a.zones||b.km-a.km||a.name.localeCompare(b.name));
+  const ranks=['gold','silver','bronze',''];
+  document.getElementById('lbList').innerHTML=allPlayers.length===0
+    ?'<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px;">No runners yet — be the first! 🏃</div>'
+    :allPlayers.map((p,i)=>`
+      <div class="pcard ${p.uid===user2?.uid?'you':''}">
+        <div class="prank ${ranks[i]||''}">${i+1}</div>
+        <div class="pdot" style="background:${p.color}"></div>
+        <div style="flex:1">
+          <div class="pnm">${p.name}${p.uid===user2?.uid?' 👤':''}</div>
+          <div class="pzn">${p.isNew?'<span style="color:var(--green);font-size:10px">🆕 New runner</span>':p.zones+' zone'+(p.zones!==1?'s':'')}</div>
+        </div>
+        <div class="pkm">${p.km.toFixed(1)}<span>km</span></div>
+      </div>`).join('');}
+
+function renderZonesList(){
+  const user = auth.currentUser;
+
+  const user = auth.currentUser;
+  const myZones = ZONES.filter(z=>user&&z.owner===user.uid);
+  document.getElementById('zonesWon').textContent = myZones.length;
+  PLAYERS.you.zones = myZones.length;
+  const allDisplayZones = [...ZONES.slice().reverse()];
+  document.getElementById('zonesList').innerHTML = allDisplayZones.length===0
+    ? '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px;line-height:1.8">No zones yet!<br>Go run and claim your first zone 🏃</div>'
+    : allDisplayZones.map(z=>{
+      const col = getOwnerColor(z);
+      const mine = user && z.owner===user.uid;
+      const isDummy = z.id && z.id.startsWith('dz_');
+      return `<div class="zcard" onclick="flyToCoords(${JSON.stringify(z.coords[0])})">
+        <div class="znm">${z.name}</div>
+        <div class="zcity">📍 ${z.city}</div>
+        <div class="zown"><div class="zdot" style="background:${col}"></div>${getOwnerName(z)}${mine?' (You)':''}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">${isDummy?z.ownerName+(mine?'':' ran here'):(z.km[user?.uid]||0).toFixed(2)+' km run here'}</div>
+        <div class="zbar-w"><div class="zbar" style="width:${mine?100:isDummy?60:40}%;background:${col}"></div></div>
+      </div>`;
+    }).join('');
+}
+
+// ── ACCOUNT ────────────────────────────────────────────
+async function loadAccountData(){
+  const user=auth.currentUser;if(!user)return;
+  try{
+    const snap=await db.collection('users').doc(user.uid).get();
+    const data=snap.exists?snap.data():{km:0,zones:0,runs:[]};
+    const runs=data.runs||[];
+    const ini=(user.displayName||'?')[0].toUpperCase();
+    const el=document.getElementById('accAvatarBig');
+    el.innerHTML=ini+'<div class="acc-edit-badge">✏️</div>';
+    el.onclick=openNameModal;
+    document.getElementById('accName').textContent=user.displayName||'Runner';
+    document.getElementById('accEmail').textContent=user.email||'—';
+    document.getElementById('accNameSub').textContent=user.displayName||'—';
+    document.getElementById('accEmailSub').textContent=user.email||'—';
+    document.getElementById('accTotalKm').textContent=(data.km||0).toFixed(1);
+    document.getElementById('accTotalRuns').textContent=runs.length;
+    document.getElementById('accTotalZones').textContent=data.zones||0;
+    const best=runs.length>0?Math.max(...runs.map(r=>r.km||0)):0;
+    document.getElementById('accBestKm').textContent=best.toFixed(1);
+    const histEl=document.getElementById('runHistory');
+    histEl.innerHTML=runs.length===0
+      ?'<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">No runs yet — go run! 🏃</div>'
+      :[...runs].reverse().slice(0,20).map((r,i)=>`
+        <div class="hist-card" style="animation-delay:${i*0.04}s">
+          <div class="hist-icon">${r.km>=10?'🏆':r.km>=5?'🔥':r.km>=3?'🏅':'👟'}</div>
+          <div class="hist-info"><div class="hist-name">${r.track||'Free Run'}</div><div class="hist-meta">${r.city||'Maharashtra'} · ${r.date?new Date(r.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'-'} · ${r.pace||'—'}/km</div></div>
+          <div style="text-align:right"><div class="hist-km">${(r.km||0).toFixed(2)}</div><div class="hist-time">${r.time||'—'}</div></div>
+        </div>`).join('');
+    const ach=[];
+    if((data.km||0)>=1)ach.push({icon:'👟',name:'First Steps',desc:'Ran your first km'});
+    if((data.km||0)>=10)ach.push({icon:'🏅',name:'10K Club',desc:'Total 10 km logged'});
+    if((data.km||0)>=50)ach.push({icon:'🔥',name:'50K Warrior',desc:'Total 50 km logged'});
+    if((data.km||0)>=100)ach.push({icon:'🏆',name:'Century Runner',desc:'Total 100 km logged'});
+    if((data.zones||0)>=1)ach.push({icon:'📍',name:'Territory Claimed',desc:'Captured your first zone'});
+    if((data.zones||0)>=5)ach.push({icon:'🗺',name:'Zone Dominator',desc:'5+ zones claimed'});
+    if(runs.length>=5)ach.push({icon:'⚡',name:'Consistent Runner',desc:'5+ runs completed'});
+    document.getElementById('accAchievements').innerHTML=ach.length
+      ?ach.map(a=>`<div class="acc-item" style="cursor:default"><div class="acc-item-icon" style="background:rgba(255,215,0,0.1);font-size:20px">${a.icon}</div><div style="flex:1"><div class="acc-item-title">${a.name}</div><div class="acc-item-sub">${a.desc}</div></div></div>`).join('')
+      :'<div style="color:var(--muted);font-size:12px;padding:8px">Complete runs to earn achievements! 🏅</div>';
+  }catch(e){console.log(e);}
+}
+function openNameModal(){document.getElementById('newNameInput').value=auth.currentUser?.displayName||'';document.getElementById('nameErr').textContent='';document.getElementById('nameModal').classList.add('show');}
+function closeNameModal(){document.getElementById('nameModal').classList.remove('show');}
+async function doChangeName(){
+  const name=document.getElementById('newNameInput').value.trim();
+  if(!name){document.getElementById('nameErr').textContent='Enter a name';return;}
+  const btn=document.getElementById('nameOkBtn');btn.textContent='...';btn.disabled=true;
+  try{
+    await auth.currentUser.updateProfile({displayName:name});
+    await db.collection('users').doc(auth.currentUser.uid).update({name});
+    ['dname','accName'].forEach(id=>document.getElementById(id).textContent=name);
+    document.getElementById('uname').textContent=name.split(' ')[0];
+    document.getElementById('accNameSub').textContent=name;
+    PLAYERS.you.name=name;
+    closeNameModal();showToast('✅ Name updated!');loadAccountData();
+  }catch(e){document.getElementById('nameErr').textContent=e.message;}
+  finally{btn.textContent='SAVE →';btn.disabled=false;}
+}
+
+// ── ZONE CHALLENGE SYSTEM ─────────────────────────────
+let challengingZone = null;
+let challengeMap = null, challengeRouteMap = null;
+let crunMap = null, crunMarker = null, crunLine = null, crunRouteLayer = null;
+let crunRunning = false, crunWatchId = null, crunSecs = 0, crunTimerInt = null;
+let crunDist = 0, crunPath = [], crunDemoInt = null, crunDemoStep = 0;
+const CHALLENGE_EXTRA_KM = 2;
+
+function openChallengeSheet(zoneId){
+  const z = ZONES.find(z=>z.id===zoneId);
+  if(!z){ showToast('Zone not found'); return; }
+  const user = auth.currentUser;
+
+  // Can't challenge your own zone
+  if(z.owner === user?.uid){ showToast("That's your zone! Others can challenge it."); return; }
+
+  challengingZone = z;
+  const ownerKm = z.km[z.owner]||0;
+  const targetKm = ownerKm + CHALLENGE_EXTRA_KM;
+
+  document.getElementById('czName').textContent = z.name;
+  document.getElementById('czCity').textContent = '📍 ' + z.city;
+  document.getElementById('czOwnerName').textContent = z.ownerName||'Unknown';
+  document.getElementById('czOwnerAv').textContent = (z.ownerName||'?')[0].toUpperCase();
+  document.getElementById('czOwnerAv').style.background = z.ownerColor||'#ff4d00';
+  document.getElementById('czKm').textContent = ownerKm.toFixed(1);
+  document.getElementById('czTarget').textContent = targetKm.toFixed(1);
+  document.getElementById('czExtra').textContent = '+'+CHALLENGE_EXTRA_KM+'km';
+  document.getElementById('czInfoText').textContent = `${z.ownerName} ran ${ownerKm.toFixed(1)}km here. You need to run ${targetKm.toFixed(1)}km (${ownerKm.toFixed(1)}km + ${CHALLENGE_EXTRA_KM}km extra) to capture this zone.`;
+
+  document.getElementById('challengeOverlay').classList.add('show');
+
+  // Draw route preview on small map
+  setTimeout(()=>{
+    if(!challengeRouteMap && z.coords && z.coords.length>2){
+      challengeRouteMap = L.map('challengeRouteMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(challengeRouteMap);
+    }
+    if(challengeRouteMap && z.coords && z.coords.length>2){
+      challengeRouteMap.invalidateSize();
+      // Draw the original zone as route
+      const routeLine = L.polyline(z.coords,{color:'#00c8ff',weight:3,dashArray:'8,5',opacity:0.9}).addTo(challengeRouteMap);
+      L.polygon(z.coords,{color:z.ownerColor||'#ff4d00',fillColor:z.ownerColor||'#ff4d00',weight:1.5,fillOpacity:0.2}).addTo(challengeRouteMap);
+      challengeRouteMap.fitBounds(routeLine.getBounds(),{padding:[10,10]});
+    }
+  },200);
+}
+
+function closeChallengeSheet(e){
+  if(e && e.target !== document.getElementById('challengeOverlay')) return;
+  document.getElementById('challengeOverlay').classList.remove('show');
+  challengingZone = null;
+}
+
+function startChallengeRun(){
+  if(!challengingZone) return;
+  document.getElementById('challengeOverlay').classList.remove('show');
+  const z = challengingZone;
+  const ownerKm = z.km[z.owner]||0;
+  const targetKm = ownerKm + CHALLENGE_EXTRA_KM;
+
+  // Show challenge run screen
+  document.getElementById('crunOverlay').classList.add('show');
+  document.getElementById('crunTitle').textContent = '⚔️ ' + z.name.toUpperCase();
+  document.getElementById('crunSub').textContent = 'Run ' + targetKm.toFixed(1) + 'km to capture this zone';
+  document.getElementById('crunTarget').textContent = targetKm.toFixed(1);
+
+  // Init challenge map
+  setTimeout(()=>{
+    if(!crunMap){
+      crunMap = L.map('challengeMap',{zoomControl:false,attributionControl:false}).setView([19.2,75.5],15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(crunMap);
+      const yi = L.divIcon({html:`<div style="width:14px;height:14px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 12px rgba(255,77,0,1)"></div>`,className:'',iconAnchor:[7,7]});
+      crunMarker = L.marker([19.2,75.5],{icon:yi}).addTo(crunMap);
+      crunLine = L.polyline([],{color:'#ff4d00',weight:3,opacity:0.9}).addTo(crunMap);
+    }
+    // Draw zone + route to follow
+    if(z.coords && z.coords.length>2){
+      crunRouteLayer && crunMap.removeLayer(crunRouteLayer);
+      crunRouteLayer = L.polyline(z.coords,{color:'#00c8ff',weight:3,dashArray:'8,5',opacity:0.7}).addTo(crunMap);
+      L.polygon(z.coords,{color:z.ownerColor,fillColor:z.ownerColor,weight:1,fillOpacity:0.15}).addTo(crunMap);
+      crunMap.fitBounds(L.polyline(z.coords).getBounds(),{padding:[40,40]});
+    }
+    crunMap.invalidateSize();
+  },100);
+
+  // Start tracking
+  crunRunning=true; crunSecs=0; crunDist=0; crunPath=[]; crunDemoStep=0;
+  if(crunLine) crunLine.setLatLngs([]);
+  crunTimerInt = setInterval(()=>{
+    crunSecs++;
+    document.getElementById('crunTimer').textContent = pad(Math.floor(crunSecs/60))+':'+pad(crunSecs%60);
+  },1000);
+  if(navigator.geolocation){
+    crunWatchId = navigator.geolocation.watchPosition(onCrunGPS, onCrunGPSErr,{enableHighAccuracy:true,maximumAge:5000});
+    showToast('📍 GPS locked — run the route!');
+  } else { startCrunDemo(); }
+}
+
+function startCrunDemo(){
+  if(!challengingZone) return;
+  const pts = challengingZone.coords;
+  crunDemoInt = setInterval(()=>{
+    if(!crunRunning) return;
+    moveCrun(pts[crunDemoStep%pts.length]);
+    crunDemoStep++;
+  },800);
+}
+function onCrunGPS(pos){ moveCrun([pos.coords.latitude,pos.coords.longitude]); }
+function onCrunGPSErr(){ startCrunDemo(); }
+
+function moveCrun(pos){
+  if(crunPath.length>0){
+    const d = distKm(crunPath[crunPath.length-1],pos);
+    crunDist += d;
+    const z = challengingZone;
+    const ownerKm = z.km[z.owner]||0;
+    const targetKm = ownerKm + CHALLENGE_EXTRA_KM;
+    const pct = Math.min(crunDist/targetKm*100,100);
+    document.getElementById('crunDist').textContent = crunDist.toFixed(2);
+    document.getElementById('crunPct').textContent = Math.floor(pct)+'%';
+    document.getElementById('crunProgressFill').style.width = pct+'%';
+    // Auto complete if target reached
+    if(crunDist >= targetKm){ completeChallengeRun(); return; }
+  }
+  crunPath.push(pos);
+  if(crunLine) crunLine.setLatLngs(crunPath);
+  if(crunMarker){ crunMarker.setLatLng(pos); if(crunMap) crunMap.panTo(pos,{animate:true,duration:0.5}); }
+}
+
+function endChallengeRun(){
+  const z = challengingZone;
+  const ownerKm = (z?.km[z?.owner]||0);
+  const targetKm = ownerKm + CHALLENGE_EXTRA_KM;
+  if(crunDist < targetKm){
+    const remaining = (targetKm - crunDist).toFixed(2);
+    showToast(`❌ Need ${remaining}km more to capture! Keep running.`);
+    return;
+  }
+  completeChallengeRun();
+}
+
+async function completeChallengeRun(){
+  if(!crunRunning) return;
+  crunRunning = false;
+  clearInterval(crunTimerInt); clearInterval(crunDemoInt);
+  if(crunWatchId){ navigator.geolocation.clearWatch(crunWatchId); crunWatchId=null; }
+  const z = challengingZone;
+  const user = auth.currentUser;
+  if(!z||!user) return;
+
+  // Transfer zone ownership in Firebase
+  try{
+    const userColor = '#ff4d00';
+    const newKm = {...z.km};
+    newKm[user.uid] = crunDist;
+    await db.collection('zones').doc(z.id).update({
+      owner: user.uid,
+      ownerName: user.displayName||'Runner',
+      ownerColor: userColor,
+      km: newKm,
+      capturedAt: Date.now()
+    });
+    // Update local zone
+    const idx = ZONES.findIndex(zz=>zz.id===z.id);
+    if(idx!==-1){
+      ZONES[idx].owner = user.uid;
+      ZONES[idx].ownerName = user.displayName||'Runner';
+      ZONES[idx].ownerColor = userColor;
+      ZONES[idx].km = newKm;
+    }
+    drawZones();
+    showCaptureSuccess(z.name);
+  }catch(e){
+    showToast('Error saving capture. Try again.');
+    console.log(e);
+  }
+  document.getElementById('crunOverlay').classList.remove('show');
+}
+
+function cancelChallengeRun(){
+  if(confirm('Abandon this challenge? Your progress will be lost.')){
+    crunRunning=false;
+    clearInterval(crunTimerInt);clearInterval(crunDemoInt);
+    if(crunWatchId){navigator.geolocation.clearWatch(crunWatchId);crunWatchId=null;}
+    document.getElementById('crunOverlay').classList.remove('show');
+    showToast('Challenge cancelled');
+  }
+}
+
+function showCaptureSuccess(zoneName){
+  document.getElementById('captureZoneName').textContent = zoneName;
+  document.getElementById('captureOverlay').classList.add('show');
+  spawnCF();
+}
+function closeCaptureScreen(){
+  document.getElementById('captureOverlay').classList.remove('show');
+  updateUI();
+}
+
+// ── TABS ───────────────────────────────────────────────
+function goTab(name){
+  closeDrawer();
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const pgEl = document.getElementById('pg-'+name);
+  if(pgEl) pgEl.classList.add('active');
+  ['run','map','tracks','lb','zones','race','acc'].forEach(n=>{
+    const el=document.getElementById('di-'+n);if(el)el.classList.toggle('active',n===name);
+  });
+  // room tab has no drawer item — just handle page switch
+  if(name==='map'&&map)setTimeout(()=>map.invalidateSize(),60);
+  if(name==='run'&&minimap)setTimeout(()=>minimap.invalidateSize(),60);
+  if(name==='race')refreshRooms();
+  if(name==='acc')loadAccountData();
+}
+function openDrawer(){document.getElementById('drawer').classList.add('open');document.getElementById('doverlay').classList.add('open');}
+function closeDrawer(){document.getElementById('drawer').classList.remove('open');document.getElementById('doverlay').classList.remove('open');}
+function flyTo(id){
+  const z=ZONES.find(z=>z.id===id);
+  if(!z||!z.coords||z.coords.length<3)return;
+  goTab('map');
+  setTimeout(()=>{try{map.fitBounds(L.polygon(z.coords).getBounds(),{padding:[60,60]});}catch(e){}},80);
+}
+function flyToCoords(coord){
+  if(!coord||!map)return;
+  goTab('map');
+  setTimeout(()=>map.setView([coord[0],coord[1]],16,{animate:true}),80);
+}
+
+// ── ROOM EXPERIENCE ──────────────────────────────────────
+let currentRoom = null;
+let roomRunning = false, rWatchId = null, rSecs = 0, rTimerInt = null;
+let rTotalDist = 0, rDemoInt = null, rDemoStep = 0;
+let rPath = [], rZonesThisRun = new Set();
+let rSpeedKmh = 0, rLastSpeedPos = null, rLastSpeedTime = null;
+let roomMinimap = null, roomMiniMarker = null, roomMiniLine = null;
+
+function openRoom(code){
+  const r = myRooms.find(r=>r.code===code);
+  if(!r){ showToast('Room not found'); return; }
+  currentRoom = r;
+  // Update header
+  document.getElementById('roomHeaderCode').textContent = code;
+  const sl={waiting:'⏳ Waiting for players',active:'🔥 Race Active',ended:'✅ Race Ended'};
+  document.getElementById('roomHeaderStatus').textContent = sl[r.status]||r.status;
+  const endsIn = r.endsAt ? Math.max(0,Math.ceil((r.endsAt-Date.now())/864e5)) : null;
+  document.getElementById('roomHeaderDays').textContent = endsIn!==null ? endsIn+'D LEFT' : '';
+  // Disable run button if waiting or ended
+  const rBtn = document.getElementById('rRunBtn');
+  if(r.status==='waiting'){ rBtn.disabled=true; rBtn.textContent='WAITING FOR PLAYERS'; }
+  else if(r.status==='ended'){ rBtn.disabled=true; rBtn.textContent='RACE ENDED'; }
+  else { rBtn.disabled=false; rBtn.textContent='START RACE RUN'; }
+  // Switch to room page
+  goTab('room');
+  switchRoomTab('run');
+  renderRoomStats();
+  renderRoomLb();
+  setTimeout(initRoomMinimap, 150);
+}
+
+function switchRoomTab(tab){
+  ['run','stats','lb'].forEach(t=>{
+    document.getElementById('rt-'+t).classList.toggle('active', t===tab);
+    document.getElementById('rp-'+t).classList.toggle('active', t===tab);
+  });
+  if(tab==='stats') renderRoomStats();
+  if(tab==='lb') renderRoomLb();
+  if(tab==='run' && roomMinimap) setTimeout(()=>roomMinimap.invalidateSize(),60);
+}
+
+function initRoomMinimap(){
+  if(roomMinimap){ roomMinimap.invalidateSize(); return; }
+  roomMinimap = L.map('roomMinimap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false}).setView([19.2,75.5],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(roomMinimap);
+  const mi = L.divIcon({html:`<div style="width:14px;height:14px;border-radius:50%;background:#ff4d00;border:3px solid white;box-shadow:0 0 12px rgba(255,77,0,1)"></div>`,className:'',iconAnchor:[7,7]});
+  roomMiniMarker = L.marker([19.2,75.5],{icon:mi}).addTo(roomMinimap);
+  roomMiniLine = L.polyline([],{color:'#ff4d00',weight:3,opacity:0.9}).addTo(roomMinimap);
+}
+
+function toggleRoomRun(){
+  if(!currentRoom || currentRoom.status!=='active') return;
+  roomRunning = !roomRunning;
+  const btn = document.getElementById('rRunBtn');
+  if(roomRunning){
+    btn.textContent='END RUN'; btn.classList.add('running');
+    rSecs=0; rTotalDist=0; rPath=[]; rZonesThisRun.clear(); rSpeedKmh=0; rLastSpeedPos=null; rLastSpeedTime=null;
+    if(roomMiniLine) roomMiniLine.setLatLngs([]);
+    document.getElementById('rRunStatus').textContent='RUNNING...';
+    document.getElementById('rDist').textContent='0.00';
+    document.getElementById('rPace').textContent='—:——';
+    document.getElementById('rSpeed').textContent='0.0';
+    document.getElementById('rZones').textContent='0';
+    document.getElementById('rZonePills').innerHTML='';
+    ['rDistCard','rPaceCard','rSpeedCard','rZoneCard'].forEach(id=>document.getElementById(id).classList.add('live'));
+    rTimerInt = setInterval(()=>{
+      rSecs++;
+      document.getElementById('rRunTimer').textContent = pad(Math.floor(rSecs/60))+':'+pad(rSecs%60);
+      updateRoomRunTab();
+    },1000);
+    if(navigator.geolocation){
+      rWatchId = navigator.geolocation.watchPosition(onRoomGPS, onRoomGPSErr, {enableHighAccuracy:true,maximumAge:5000});
+      showToast('📍 GPS locked — run for the race!');
+    } else { showToast('Demo mode'); startRoomDemo(); }
+  } else {
+    btn.textContent='START RACE RUN'; btn.classList.remove('running');
+    document.getElementById('rRunStatus').textContent='RUN SAVED ✅';
+    ['rDistCard','rPaceCard','rSpeedCard','rZoneCard'].forEach(id=>document.getElementById(id).classList.remove('live'));
+    clearInterval(rTimerInt); clearInterval(rDemoInt);
+    if(rWatchId){ navigator.geolocation.clearWatch(rWatchId); rWatchId=null; }
+    saveRoomRun();
+  }
+}
+
+function startRoomDemo(){
+  const pts = selectedTrack.wp; rDemoStep=0;
+  rDemoInt = setInterval(()=>{if(!roomRunning)return; moveRoomPlayer(pts[rDemoStep%pts.length]); rDemoStep++;},900);
+}
+function onRoomGPS(pos){ moveRoomPlayer([pos.coords.latitude,pos.coords.longitude]); }
+function onRoomGPSErr(){ showToast('GPS error — demo mode'); startRoomDemo(); }
+
+function moveRoomPlayer(pos){
+  const now = Date.now();
+  if(rPath.length>0){
+    const d = distKm(rPath[rPath.length-1], pos);
+    rTotalDist += d;
+    if(rLastSpeedPos&&rLastSpeedTime){ const dt=(now-rLastSpeedTime)/3600000; const dd=distKm(rLastSpeedPos,pos); if(dt>0)rSpeedKmh=Math.min(dd/dt,40); }
+    rLastSpeedPos=pos; rLastSpeedTime=now;
+    
+    ZONES.forEach(z=>{ if(z.coords&&inPoly(pos,z.coords)) rZonesThisRun.add(z.id); });
+  }
+  rPath.push(pos);
+  if(roomMiniLine) roomMiniLine.setLatLngs(rPath);
+  if(roomMiniMarker){ roomMiniMarker.setLatLng(pos); if(roomMinimap) roomMinimap.setView(pos,16,{animate:true,duration:0.5}); }
+}
+
+function updateRoomRunTab(){
+  document.getElementById('rDist').textContent = rTotalDist.toFixed(2);
+  document.getElementById('rPace').textContent = rTotalDist>0&&rSecs>0 ? fmtPace(rSecs/rTotalDist) : '—:——';
+  document.getElementById('rSpeed').textContent = rSpeedKmh.toFixed(1);
+  const allZoneNames = [...rZonesThisRun].map(id=>{
+    const z = DUMMY_ZONES.find(z=>z.id===id)||ZONES.find(z=>z.id===id);
+    return z?z.name:null;
+  }).filter(Boolean);
+  document.getElementById('rZones').textContent = allZoneNames.length;
+  document.getElementById('rZonePills').innerHTML = allZoneNames.map(n=>`<div class="rzpill">📍 ${n}</div>`).join('');
+}
+
+async function saveRoomRun(){
+  if(!currentRoom||rTotalDist<=0) return;
+  const user = auth.currentUser; if(!user) return;
+  const runNum = ((currentRoom.runs||[]).filter(r=>r.uid===user.uid).length)+1;
+  const runRecord = {
+    uid: user.uid,
+    name: user.displayName||'Runner',
+    color: currentRoom.players?.find(p=>p.uid===user.uid)?.color||'#ff4d00',
+    label: `${user.displayName||'Runner'}'s Run ${runNum}`,
+    km: rTotalDist,
+    time: pad(Math.floor(rSecs/60))+':'+pad(rSecs%60),
+    pace: rTotalDist>0 ? fmtPace(rSecs/rTotalDist) : '—',
+    zones: rZonesThisRun.size,
+    date: Date.now()
+  };
+  try{
+    const ref = db.collection('rooms').doc(currentRoom.code);
+    const snap = await ref.get();
+    if(snap.exists){
+      const data = snap.data();
+      const runs = [...(data.runs||[]), runRecord];
+      // Update player stats
+      const players = (data.players||[]).map(p=>{
+        if(p.uid===user.uid){
+          return {...p, km:(p.km||0)+rTotalDist, zones:(p.zones||0)+rZonesThisRun.size};
+        }
+        return p;
+      });
+      await ref.update({runs, players});
+      currentRoom.runs = runs;
+      currentRoom.players = players;
+      showToast(`✅ "${runRecord.label}" saved!`);
+      switchRoomTab('stats');
+      renderRoomStats();
+      renderRoomLb();
+    }
+  }catch(e){ showToast('Error saving run'); console.log(e); }
+}
+
+function renderRoomStats(){
+  const el = document.getElementById('roomRunsList');
+  const runs = currentRoom?.runs||[];
+  if(!runs.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px;">No runs yet — start racing! 🏃</div>'; return; }
+  const user = auth.currentUser;
+  el.innerHTML = [...runs].reverse().map((r,i)=>`
+    <div class="stats-run-card">
+      <div class="stats-run-label" style="background:rgba(${hexToRgb(r.color||'#ff4d00')},0.15);color:${r.color||'#ff4d00'};border-color:${r.color||'#ff4d00'}44">${r.label||r.name}</div>
+      <div class="stats-run-name">${r.label||r.name+' Run'}</div>
+      <div class="stats-run-meta">${new Date(r.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · ${r.time||'—'}</div>
+      <div class="stats-run-row">
+        <div class="stats-run-stat"><div class="stats-run-val">${(r.km||0).toFixed(2)}</div><div class="stats-run-lbl">km</div></div>
+        <div class="stats-run-stat"><div class="stats-run-val" style="color:var(--accent2)">${r.pace||'—'}</div><div class="stats-run-lbl">pace</div></div>
+        <div class="stats-run-stat"><div class="stats-run-val" style="color:var(--gold)">${r.zones||0}</div><div class="stats-run-lbl">zones</div></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderRoomLb(){
+  const el = document.getElementById('roomLbList');
+  const user = auth.currentUser;
+  const players = [...(currentRoom?.players||[])].sort((a,b)=>(b.zones||0)-(a.zones||0)||(b.km||0)-(a.km||0));
+  const rankCls = ['g','s','b',''];
+  // Count runs per player
+  const runCount = {};
+  (currentRoom?.runs||[]).forEach(r=>{ runCount[r.uid]=(runCount[r.uid]||0)+1; });
+  el.innerHTML = players.length===0
+    ? '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px;">No players yet</div>'
+    : players.map((p,i)=>`
+      <div class="rlb-card ${p.uid===user?.uid?'me':''}">
+        <div class="rlb-rank ${rankCls[i]||''}">${i+1}</div>
+        <div class="rlb-avatar" style="background:${p.color||'#888'}">${(p.name||'?')[0].toUpperCase()}</div>
+        <div style="flex:1">
+          <div class="rlb-name">${p.name}${p.uid===user?.uid?' 👤':''}</div>
+          <div class="rlb-sub">${runCount[p.uid]||0} run${(runCount[p.uid]||0)!==1?'s':''} · ${p.zones||0} zones</div>
+        </div>
+        <div>
+          <div class="rlb-km">${(p.km||0).toFixed(1)}<span>km</span></div>
+          <div class="rlb-runs">${p.zones||0} zones owned</div>
+        </div>
+      </div>`).join('');
+}
+
+function hexToRgb(hex){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+// ── UTILS ──────────────────────────────────────────────
+function distKm(a,b){const R=6371,dLa=(b[0]-a[0])*Math.PI/180,dLo=(b[1]-a[1])*Math.PI/180;const s=Math.sin(dLa/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLo/2)**2;return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));}
+function inPoly(pt,poly){const[lat,lng]=pt;let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const[yi,xi]=poly[i],[yj,xj]=poly[j];if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;}return inside;}
+function pad(n){return String(n).padStart(2,'0');}
+let tTO;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(tTO);tTO=setTimeout(()=>t.classList.remove('show'),3200);}
+
+// Check URL for room join
+window.addEventListener('load',()=>{
+  const code=new URLSearchParams(location.search).get('room');
+  if(code){setTimeout(()=>{if(auth.currentUser){document.getElementById('joinCode').value=code;openJoin();}},2000);}
+});
+</script>
+<script>
+// Register service worker for PWA
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').then(()=>{
+      console.log('ZONR SW registered');
+    }).catch(err=>console.log('SW error:',err));
+  });
+}
+</script>
+</body>
+</html>
