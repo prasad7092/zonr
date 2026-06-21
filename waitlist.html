@@ -371,7 +371,7 @@ const db = firebase.firestore();
 async function loadCount(){
   try{
     const snap = await db.collection('waitlist').get();
-    const count = snap.size;
+    const count = snap.size + 50; // 247 dummy base count
     document.getElementById('countStat').textContent = count;
     document.getElementById('navCount').textContent = `🔥 ${count} Joined`;
   }catch(e){ document.getElementById('countStat').textContent='100+'; }
