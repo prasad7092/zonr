@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ZONR — You've Been Dared!</title>
+<meta name="theme-color" content="#ff4d00">
+<meta name="description" content="Someone dared you on ZONR. Can you beat them?">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+:root{--bg:#0a0a0f;--panel:#11111a;--panel2:#181824;--border:#1e1e2e;--accent:#ff4d00;--accent2:#00c8ff;--green:#00e87a;--gold:#ffd700;--text:#eeeef5;--muted:#55557a;--r:12px;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,0,0.4);}70%{box-shadow:0 0 0 16px rgba(255,77,0,0);}}
+
+/* LOADING */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:100;}
+.load-logo{font-family:'Bebas Neue',sans-serif;font-size:56px;letter-spacing:10px;color:var(--accent);}
+.load-logo span{color:var(--text);}
+.load-dots{display:flex;gap:8px;}
+.load-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:dotP 1.2s ease infinite;}
+.load-dot:nth-child(2){animation-delay:.2s;background:var(--accent2);}
+.load-dot:nth-child(3){animation-delay:.4s;background:var(--green);}
+@keyframes dotP{0%,100%{opacity:.3;transform:scale(.8);}50%{opacity:1;transform:scale(1.2);}}
+
+/* MAIN PAGE */
+#page{display:none;max-width:480px;margin:0 auto;padding:24px 16px 40px;}
+
+.zonr-logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:4px;color:var(--accent);text-align:center;margin-bottom:24px;}
+.zonr-logo span{color:var(--text);}
+
+/* Hero dare card */
+.dare-hero{background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:24px 20px;margin-bottom:20px;text-align:center;animation:fadeUp .5s ease both;}
+.dare-fire{font-size:56px;margin-bottom:8px;}
+.dare-headline{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:3px;line-height:1.1;color:var(--text);}
+.dare-headline span{color:var(--accent);}
+.dare-from{font-size:13px;color:var(--muted);margin-top:6px;letter-spacing:1px;}
+.dare-from b{color:var(--text);}
+
+/* Stats strip */
+.dare-stats{display:flex;gap:10px;margin-bottom:20px;animation:fadeUp .5s ease .1s both;}
+.dstat{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;}
+.dstat-v{font-family:'Bebas Neue',sans-serif;font-size:28px;line-height:1;color:var(--accent);}
+.dstat-l{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px;}
+
+/* Map preview */
+.map-wrap{border-radius:14px;overflow:hidden;height:160px;margin-bottom:20px;border:1px solid var(--border);position:relative;animation:fadeUp .5s ease .15s both;}
+#previewMap{width:100%;height:100%;}
+.map-label{position:absolute;top:8px;left:8px;background:rgba(0,200,255,.9);color:#000;font-size:9px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:1px;z-index:400;}
+
+/* Mode cards */
+.mode-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--muted);margin-bottom:12px;animation:fadeUp .5s ease .2s both;}
+.mode-cards{display:flex;flex-direction:column;gap:12px;margin-bottom:24px;animation:fadeUp .5s ease .25s both;}
+.mode-card{background:var(--panel);border:2px solid var(--border);border-radius:16px;padding:18px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:14px;}
+.mode-card:hover,.mode-card.selected{border-color:var(--accent);background:rgba(255,77,0,.07);}
+.mode-card-icon{font-size:32px;flex-shrink:0;}
+.mode-card-info{flex:1;}
+.mode-card-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--text);}
+.mode-card-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4;}
+.mode-card-km{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);text-align:right;flex-shrink:0;}
+.mode-card-km span{font-size:11px;font-family:'DM Sans',sans-serif;color:var(--muted);display:block;}
+
+/* Accept button */
+.accept-btn{width:100%;padding:18px;border-radius:14px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;cursor:pointer;box-shadow:0 0 32px rgba(255,77,0,.4);animation:pulse 2s ease infinite, fadeUp .5s ease .3s both;transition:background .2s;}
+.accept-btn:hover{background:#ff6120;}
+.accept-btn:disabled{opacity:.6;animation:none;cursor:default;}
+.accept-note{font-size:11px;color:var(--muted);text-align:center;margin-top:12px;animation:fadeUp .5s ease .35s both;}
+
+/* Dare not found */
+#notFound{display:none;text-align:center;padding:60px 20px;}
+#notFound .nf-emoji{font-size:56px;margin-bottom:12px;}
+#notFound .nf-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:3px;color:var(--muted);}
+#notFound .nf-sub{font-size:13px;color:var(--muted);margin-top:8px;}
+#notFound .nf-btn{margin-top:24px;padding:14px 32px;border-radius:12px;border:none;background:var(--accent);color:white;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;cursor:pointer;}
+
+/* Auth overlay */
+#authWall{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;}
+#authWall.show{display:flex;}
+.auth-box{background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:28px 24px;width:100%;max-width:340px;}
+.auth-logo{font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:8px;color:var(--accent);text-align:center;margin-bottom:4px;}
+.auth-logo span{color:var(--text);}
+.auth-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:1px;}
+.auth-tabs{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px;}
+.atab{flex:1;padding:10px;text-align:center;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:all .2s;}
+.atab.active{background:var(--accent);color:white;}
+.afield{margin-bottom:12px;}
+.afield label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:5px;}
+.afield input{width:100%;padding:11px 13px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border .2s;}
+.afield input:focus{border-color:var(--accent);}
+.abtn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;margin-top:4px;}
+.abtn:disabled{opacity:.6;cursor:default;}
+.aerr{color:#ff5555;font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="load-logo">ZON<span>R</span></div>
+  <div class="load-dots"><div class="load-dot"></div><div class="load-dot"></div><div class="load-dot"></div></div>
+</div>
+
+<div id="page">
+  <div class="zonr-logo">ZON<span>R</span></div>
+
+  <div class="dare-hero">
+    <div class="dare-fire">⚔️</div>
+    <div class="dare-headline"><span id="dFriendName">Your friend</span><br>DARES YOU!</div>
+    <div class="dare-from">Accept the challenge — beat their run to claim the W</div>
+  </div>
+
+  <div class="dare-stats">
+    <div class="dstat"><div class="dstat-v" id="dFriendKm">0.00</div><div class="dstat-l">Their km</div></div>
+    <div class="dstat"><div class="dstat-v" style="color:var(--accent2)" id="dSameKm">0.00</div><div class="dstat-l">Same route</div></div>
+    <div class="dstat"><div class="dstat-v" style="color:var(--green)" id="dOwnKm">0.00</div><div class="dstat-l">Own route</div></div>
+  </div>
+
+  <div class="map-wrap" id="mapWrap" style="display:none;">
+    <div id="previewMap"></div>
+    <div class="map-label">THEIR ROUTE</div>
+  </div>
+
+  <div class="mode-title">CHOOSE YOUR CHALLENGE</div>
+  <div class="mode-cards">
+    <div class="mode-card selected" id="cardSame" onclick="selectMode('same')">
+      <div class="mode-card-icon">🗺️</div>
+      <div class="mode-card-info">
+        <div class="mode-card-title">SAME ROUTE</div>
+        <div class="mode-card-sub">Run their exact path + 30% more distance. Route is shown on your map the whole way.</div>
+      </div>
+      <div class="mode-card-km" id="cardSameKm">0.00<span>km</span></div>
+    </div>
+    <div class="mode-card" id="cardOwn" onclick="selectMode('own')">
+      <div class="mode-card-icon">🔀</div>
+      <div class="mode-card-info">
+        <div class="mode-card-title">OWN ROUTE</div>
+        <div class="mode-card-sub">Run anywhere you want — but you need 50% more km than them.</div>
+      </div>
+      <div class="mode-card-km" id="cardOwnKm">0.00<span>km</span></div>
+    </div>
+  </div>
+
+  <button class="accept-btn" id="acceptBtn" onclick="acceptDare()">⚔️ ACCEPT DARE</button>
+  <p class="accept-note">You'll be redirected to the ZONR app to run the challenge.</p>
+</div>
+
+<div id="notFound">
+  <div class="nf-emoji">😅</div>
+  <div class="nf-title">DARE NOT FOUND</div>
+  <div class="nf-sub">This challenge may have expired or the link is broken.</div>
+  <button class="nf-btn" onclick="location.href='index.html'">OPEN ZONR →</button>
+</div>
+
+<!-- Auth wall — shown if not signed in -->
+<div id="authWall">
+  <div class="auth-box">
+    <div class="auth-logo">ZON<span>R</span></div>
+    <div class="auth-sub">SIGN IN TO ACCEPT THE DARE</div>
+    <div class="auth-tabs"><div class="atab active" id="atLogin" onclick="switchATab('login')">LOG IN</div><div class="atab" id="atSignup" onclick="switchATab('signup')">SIGN UP</div></div>
+    <div id="nameRow" class="afield" style="display:none"><label>Name</label><input id="aName" type="text" placeholder="Your name"></div>
+    <div class="afield"><label>Email</label><input id="aEmail" type="email" placeholder="you@email.com"></div>
+    <div class="afield"><label>Password</label><input id="aPass" type="password" placeholder="Password"></div>
+    <div class="aerr" id="aErr"></div>
+    <button class="abtn" id="aBtn" onclick="doAuth()">LOG IN →</button>
+  </div>
+</div>
+
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyDQOfcnkcxV9dLxt8uFddkov2aNNVMVbUs",
+  authDomain:"turfwar-3b38a.firebaseapp.com",
+  projectId:"turfwar-3b38a",
+  storageBucket:"turfwar-3b38a.firebasestorage.app",
+  messagingSenderId:"179531351302",
+  appId:"1:179531351302:web:f7840c8cdd50cb86efca87"
+});
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+let dareData = null;
+let selectedMode = 'same';
+let dareId = null;
+
+// ── Load dare from URL param ──────────────────────────
+window.addEventListener('DOMContentLoaded', async ()=>{
+  const p = new URLSearchParams(location.search);
+  dareId = p.get('d');
+  if(!dareId){ showNotFound(); return; }
+
+  try{
+    const snap = await db.collection('dares').doc(dareId).get();
+    if(!snap.exists){ showNotFound(); return; }
+    dareData = snap.data();
+    renderDare();
+  } catch(e){
+    console.log('dare load err:', e);
+    showNotFound();
+  }
+});
+
+function showNotFound(){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('notFound').style.display='block';
+}
+
+function renderDare(){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('page').style.display='block';
+
+  const km       = dareData.km || 0;
+  const sameKm   = +(km * 1.3).toFixed(2);
+  const ownKm    = +(km * 1.5).toFixed(2);
+  const name     = dareData.name || 'Your friend';
+
+  document.getElementById('dFriendName').textContent = name;
+  document.getElementById('dFriendKm').textContent   = km.toFixed(2);
+  document.getElementById('dSameKm').textContent     = sameKm.toFixed(2);
+  document.getElementById('dOwnKm').textContent      = ownKm.toFixed(2);
+  document.getElementById('cardSameKm').innerHTML    = sameKm.toFixed(2)+'<span>km</span>';
+  document.getElementById('cardOwnKm').innerHTML     = ownKm.toFixed(2)+'<span>km</span>';
+
+  // Draw route preview if path exists
+  const path = dareData.path;
+  if(path && path.length > 1){
+    document.getElementById('mapWrap').style.display='block';
+    setTimeout(()=>{
+      const map = L.map('previewMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+      const line = L.polyline(path,{color:'#00c8ff',weight:3,dashArray:'8,5',opacity:0.9}).addTo(map);
+      L.circleMarker(path[0],{radius:6,color:'#00e87a',fillColor:'#00e87a',fillOpacity:1}).addTo(map);
+      L.circleMarker(path[path.length-1],{radius:6,color:'#ffd700',fillColor:'#ffd700',fillOpacity:1}).addTo(map);
+      map.fitBounds(line.getBounds(),{padding:[16,16]});
+    },200);
+  }
+}
+
+function selectMode(mode){
+  selectedMode = mode;
+  document.getElementById('cardSame').classList.toggle('selected', mode==='same');
+  document.getElementById('cardOwn').classList.toggle('selected', mode==='own');
+}
+
+function acceptDare(){
+  auth.onAuthStateChanged(user=>{
+    if(user){
+      // Redirect to app with dare params
+      location.href = 'index.html?accept='+dareId+'&mode='+selectedMode;
+    } else {
+      document.getElementById('authWall').classList.add('show');
+    }
+  });
+}
+
+// ── Auth ─────────────────────────────────────────────
+let authTab = 'login';
+function switchATab(t){
+  authTab = t;
+  document.getElementById('atLogin').classList.toggle('active', t==='login');
+  document.getElementById('atSignup').classList.toggle('active', t==='signup');
+  document.getElementById('nameRow').style.display = t==='signup'?'block':'none';
+  document.getElementById('aBtn').textContent = t==='login'?'LOG IN →':'SIGN UP →';
+}
+
+async function doAuth(){
+  const email = document.getElementById('aEmail').value.trim();
+  const pass  = document.getElementById('aPass').value;
+  const name  = document.getElementById('aName').value.trim();
+  const err   = document.getElementById('aErr');
+  const btn   = document.getElementById('aBtn');
+  err.textContent = ''; btn.textContent = '...'; btn.disabled = true;
+  try{
+    if(authTab === 'login'){
+      await auth.signInWithEmailAndPassword(email, pass);
+    } else {
+      if(!name){ err.textContent='Enter your name'; btn.disabled=false; btn.textContent='SIGN UP →'; return; }
+      const cred = await auth.createUserWithEmailAndPassword(email, pass);
+      await cred.user.updateProfile({displayName: name});
+      await db.collection('users').doc(cred.user.uid).set({name, email, totalKm:0, zones:0, joinedAt:Date.now()});
+    }
+    document.getElementById('authWall').classList.remove('show');
+    // Now redirect to run
+    location.href = 'index.html?accept='+dareId+'&mode='+selectedMode;
+  } catch(e){
+    err.textContent = e.message;
+    btn.disabled=false; btn.textContent = authTab==='login'?'LOG IN →':'SIGN UP →';
+  }
+}
+</script>
+</body>
+</html>
